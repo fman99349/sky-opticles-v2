@@ -1,0 +1,356 @@
+const express = require('express');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const pool = require('../db');
+const { sendExpoPush } = require('../utils/expoPush');
+
+const router = express.Router();
+
+const BCRYPT_COST = 10;
+const EMAIL_MAX = 180;
+const NAME_MAX = 120;
+const PASSWORD_MIN = 8;
+const PASSWORD_MAX = 72;
+const PHONE_MAX = 40;
+
+function publicUser(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    phone: row.phone || null,
+    created_at: row.created_at,
+  };
+}
+
+function isValidEmail(value) {
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > EMAIL_MAX) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
+}
+
+// Loose phone validation: 10–15 digits, ignoring spaces, dashes, parentheses,
+// and the leading +. Accepts formats like "+27 82 123 4567" and "0821234567".
+function isValidPhone(value) {
+  if (typeof value !== 'string') return false;
+  if (value.length > PHONE_MAX) return false;
+  const digits = value.replace(/\D/g, '');
+  return digits.length >= 10 && digits.length <= 15;
+}
+
+function signToken(user) {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new Error('JWT_SECRET is not configured');
+  return jwt.sign(
+    { sub: String(user.id), email: user.email },
+    secret,
+    { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+  );
+}
+
+function handleError(res, error, operation) {
+  console.error(`${operation}:`, error.message);
+
+  if (error.code === '23505') {
+    return res.status(409).json({ error: 'That email is already registered.' });
+  }
+
+  return res.status(500).json({ error: 'An unexpected server error occurred.' });
+}
+
+// Shared JWT verification for endpoints that need the signed-in customer.
+// Returns the customer row, or null after sending the appropriate error.
+async function loadCustomerFromAuthHeader(req, res) {
+  const header = req.headers.authorization || '';
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  if (!match) {
+    res.status(401).json({ error: 'Missing or malformed Authorization header.' });
+    return null;
+  }
+
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    res.status(500).json({ error: 'Server auth is not configured.' });
+    return null;
+  }
+
+  let payload;
+  try {
+    payload = jwt.verify(match[1], secret);
+  } catch {
+    res.status(401).json({ error: 'Invalid or expired token.' });
+    return null;
+  }
+
+  if (payload.role === 'admin') {
+    res.status(403).json({ error: 'Customer access required.' });
+    return null;
+  }
+
+  const result = await pool.query(
+    'SELECT id, name, email, phone, created_at FROM users WHERE id = $1',
+    [payload.sub]
+  );
+  if (result.rows.length === 0) {
+    res.status(401).json({ error: 'Account no longer exists.' });
+    return null;
+  }
+  return result.rows[0];
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/auth/register
+// ---------------------------------------------------------------------------
+router.post('/auth/register', async (req, res) => {
+  const { name, email, password } = req.body || {};
+
+  if (typeof name !== 'string' || !name.trim() || name.trim().length > NAME_MAX) {
+    return res.status(400).json({
+      error: `Name is required and must not exceed ${NAME_MAX} characters.`,
+    });
+  }
+
+  if (!isValidEmail(email)) {
+    return res.status(400).json({ error: 'A valid email address is required.' });
+  }
+
+  if (
+    typeof password !== 'string' ||
+    password.length < PASSWORD_MIN ||
+    password.length > PASSWORD_MAX
+  ) {
+    return res.status(400).json({
+      error: `Password must be between ${PASSWORD_MIN} and ${PASSWORD_MAX} characters.`,
+    });
+  }
+
+  const cleanName = name.trim();
+  const cleanEmail = email.trim();
+  const lowerEmail = cleanEmail.toLowerCase();
+
+  try {
+    const existing = await pool.query(
+      'SELECT id FROM users WHERE LOWER(email) = $1',
+      [lowerEmail]
+    );
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ error: 'That email is already registered.' });
+    }
+
+    const passwordHash = await bcrypt.hash(password, BCRYPT_COST);
+
+    const result = await pool.query(
+      `INSERT INTO users (name, email, password_hash)
+       VALUES ($1, $2, $3)
+       RETURNING id, name, email, phone, created_at`,
+      [cleanName, cleanEmail, passwordHash]
+    );
+
+    const user = result.rows[0];
+    const token = signToken(user);
+
+    // --- NOTIFICATION TRIGGER ---
+    await pool.query(
+      `INSERT INTO notifications (customer_id, title, message, type)
+       VALUES ($1, $2, $3, 'account')`,
+      [user.id, 'Welcome to SKY OPTICLES!', 'Your account is ready. Start exploring our collection today.']
+    );
+    // ----------------------------
+
+    res.status(201).json({ data: { user: publicUser(user), token } });
+  } catch (error) {
+    handleError(res, error, 'Register failed');
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/auth/login
+// ---------------------------------------------------------------------------
+router.post('/auth/login', async (req, res) => {
+  const { email, password } = req.body || {};
+
+  if (!isValidEmail(email) || typeof password !== 'string' || !password) {
+    return res.status(401).json({ error: 'Invalid email or password.' });
+  }
+
+  const lowerEmail = email.trim().toLowerCase();
+
+  try {
+    const result = await pool.query(
+      'SELECT id, name, email, phone, password_hash, created_at FROM users WHERE LOWER(email) = $1',
+      [lowerEmail]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: 'Invalid email or password.' });
+    }
+
+    const row = result.rows[0];
+    const ok = await bcrypt.compare(password, row.password_hash);
+    if (!ok) {
+      return res.status(401).json({ error: 'Invalid email or password.' });
+    }
+
+    const token = signToken(row);
+    res.json({ data: { user: publicUser(row), token } });
+  } catch (error) {
+    handleError(res, error, 'Login failed');
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/auth/me
+// ---------------------------------------------------------------------------
+router.get('/auth/me', async (req, res) => {
+  try {
+    const user = await loadCustomerFromAuthHeader(req, res);
+    if (!user) return;
+
+    res.json({ data: { user: publicUser(user) } });
+  } catch (error) {
+    handleError(res, error, 'Me failed');
+  }
+});
+
+// ---------------------------------------------------------------------------
+// PATCH /api/auth/me
+// Update name, phone, or email on the signed-in customer's account.
+// All fields optional; only provided fields are updated.
+//
+// Email change implications:
+//  - The unique index is case-insensitive, so 'A@x' and 'a@x' collide.
+//  - The current JWT stays valid because it identifies the user by id, not
+//    email. The email inside the token is informational only.
+//  - A 409 is returned if the new email is already in use by another account.
+//
+// Phone is optional (can be null/empty to clear). When provided, it must
+// contain 10–15 digits, ignoring formatting characters.
+//
+// Password change is intentionally NOT included here — it will be its own
+// endpoint (requires current password + new password) when implemented.
+// ---------------------------------------------------------------------------
+router.patch('/auth/me', async (req, res) => {
+  const { name, phone, email } = req.body || {};
+
+  const setClauses = [];
+  const values = [];
+
+  if (name !== undefined) {
+    if (typeof name !== 'string' || !name.trim() || name.trim().length > NAME_MAX) {
+      return res.status(400).json({
+        error: `Name must be 1–${NAME_MAX} characters.`,
+      });
+    }
+    values.push(name.trim());
+    setClauses.push(`name = $${values.length}`);
+  }
+
+  if (phone !== undefined) {
+    if (phone === null || phone === '') {
+      values.push(null);
+    } else {
+      if (!isValidPhone(phone)) {
+        return res.status(400).json({
+          error: 'Phone must contain 10–15 digits.',
+        });
+      }
+      values.push(phone.trim());
+    }
+    setClauses.push(`phone = $${values.length}`);
+  }
+
+  if (email !== undefined) {
+    if (!isValidEmail(email)) {
+      return res.status(400).json({
+        error: 'A valid email address is required.',
+      });
+    }
+    values.push(email.trim());
+    setClauses.push(`email = $${values.length}`);
+  }
+
+  if (setClauses.length === 0) {
+    return res.status(400).json({ error: 'No fields to update.' });
+  }
+
+  let user;
+  try {
+    user = await loadCustomerFromAuthHeader(req, res);
+    if (!user) return;
+  } catch (error) {
+    return handleError(res, error, 'Update profile auth failed');
+  }
+
+  setClauses.push('updated_at = NOW()');
+  values.push(user.id);
+
+  try {
+    const result = await pool.query(
+      `UPDATE users
+       SET ${setClauses.join(', ')}
+       WHERE id = $${values.length}
+       RETURNING id, name, email, phone, created_at`,
+      values
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Account not found.' });
+    }
+
+    res.json({ data: { user: publicUser(result.rows[0]) } });
+  } catch (error) {
+    // Explicit 409 for email collision so the mobile app can show a clear
+    // message instead of a generic 500.
+    if (error.code === '23505') {
+      return res.status(409).json({
+        error: 'That email is already registered to another account.',
+      });
+    }
+    handleError(res, error, 'Update profile failed');
+  }
+});
+
+
+
+
+
+
+// PATCH /api/auth/push-token
+router.patch('/auth/push-token', async (req, res) => {
+  const header = req.headers.authorization || '';
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  if (!match) return res.status(401).json({ error: 'Missing auth header.' });
+
+  let payload;
+  try { payload = jwt.verify(match[1], process.env.JWT_SECRET); } 
+  catch { return res.status(401).json({ error: 'Invalid token.' }); }
+
+  const { pushToken } = req.body;
+  if (!pushToken) return res.status(400).json({ error: 'pushToken required.' });
+
+  try {
+    await pool.query('UPDATE users SET expo_push_token = $1 WHERE id = $2', [pushToken, payload.sub]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to save token.' });
+  }
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+module.exports = router;

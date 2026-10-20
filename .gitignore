@@ -1,0 +1,42 @@
+# Dependencies
+**/node_modules/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Build output
+**/dist/
+**/build/
+**/web-build/
+
+# User uploads
+**/uploads/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local databases and backups
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+*.sql.gz
+
+
+
+
+
+
+# Private keys------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
+*.pem
+*.key
+
+# Operating system files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,144 @@
+{
+  "groups": [
+    {
+      "group_key": "lensType",
+      "label": "Lens type",
+      "help_title": "What is lens type?",
+      "help_body": "Your prescription type. Single vision corrects one viewing distance (most common). Reading helps up close. Bifocal and progressive correct multiple distances in one lens.",
+      "applies_to": ["optical_frame", "lenses"],
+      "sort_order": 1,
+      "options": [
+        { "option_key": "plano",       "label": "Plano (no prescription)", "price_delta": 0,    "overlay_color": null, "sort_order": 1 },
+        { "option_key": "single",      "label": "Single vision",           "price_delta": 400,  "overlay_color": null, "sort_order": 2 },
+        { "option_key": "reading",     "label": "Reading",                 "price_delta": 350,  "overlay_color": null, "sort_order": 3 },
+        { "option_key": "bifocal",     "label": "Bifocal",                 "price_delta": 700,  "overlay_color": null, "sort_order": 4 },
+        { "option_key": "progressive", "label": "Progressive",             "price_delta": 1200, "overlay_color": null, "sort_order": 5 }
+      ]
+    },
+    {
+      "group_key": "lensIndex",
+      "label": "Lens index",
+      "help_title": "What is lens index?",
+      "help_body": "Higher index = thinner, lighter lens. Choose 1.56 for light prescriptions, 1.61 for medium, 1.67 for strong, 1.74 for very strong.",
+      "applies_to": ["optical_frame", "lenses"],
+      "sort_order": 2,
+      "options": [
+        { "option_key": "1.50", "label": "1.50 - Standard",   "price_delta": 0,    "overlay_color": null, "sort_order": 1 },
+        { "option_key": "1.56", "label": "1.56 - Mid-index",  "price_delta": 200,  "overlay_color": null, "sort_order": 2 },
+        { "option_key": "1.61", "label": "1.61 - Thin",       "price_delta": 400,  "overlay_color": null, "sort_order": 3 },
+        { "option_key": "1.67", "label": "1.67 - Very thin",  "price_delta": 800,  "overlay_color": null, "sort_order": 4 },
+        { "option_key": "1.74", "label": "1.74 - Ultra-thin", "price_delta": 1400, "overlay_color": null, "sort_order": 5 }
+      ]
+    },
+    {
+      "group_key": "edgeThickness",
+      "label": "Edge finish",
+      "help_title": "What is edge finish?",
+      "help_body": "Standard edge is the plain cut. Thin and ultra-thin edge are polished thinner for a lighter feel and better aesthetics on strong prescriptions.",
+      "applies_to": ["optical_frame", "lenses"],
+      "sort_order": 3,
+      "options": [
+        { "option_key": "standard", "label": "Standard edge",   "price_delta": 0,   "overlay_color": null, "sort_order": 1 },
+        { "option_key": "thin",     "label": "Thin edge",       "price_delta": 150, "overlay_color": null, "sort_order": 2 },
+        { "option_key": "ultra",    "label": "Ultra-thin edge", "price_delta": 300, "overlay_color": null, "sort_order": 3 }
+      ]
+    },
+    {
+      "group_key": "progressiveStyle",
+      "label": "Progressive style",
+      "help_title": "Progressive styles",
+      "help_body": "Only relevant if you chose Progressive above. Standard gives a classic corridor. Premium widens it. Digital freeform is fully individualised to your vision pattern.",
+      "applies_to": ["optical_frame", "lenses"],
+      "sort_order": 4,
+      "options": [
+        { "option_key": "standard", "label": "Standard progressive", "price_delta": 0,    "overlay_color": null, "sort_order": 1 },
+        { "option_key": "premium",  "label": "Premium progressive",  "price_delta": 500,  "overlay_color": null, "sort_order": 2 },
+        { "option_key": "digital",  "label": "Digital freeform",     "price_delta": 1000, "overlay_color": null, "sort_order": 3 }
+      ]
+    },
+    {
+      "group_key": "tint",
+      "label": "Tint",
+      "help_title": "Lens tints",
+      "help_body": "Clear is fully transparent. Grey reduces glare neutrally. Brown warms colours and is great for driving. Green is calm and natural. Rose improves contrast. Blue mirror is reflective and dramatic. Gradient fades from dark to light. Photochromic darkens automatically in sunlight.",
+      "applies_to": ["optical_frame", "lenses", "sunglasses"],
+      "sort_order": 5,
+      "options": [
+        { "option_key": "clear",        "label": "Clear",        "price_delta": 0,   "overlay_color": null,                     "sort_order": 1 },
+        { "option_key": "grey",         "label": "Grey",         "price_delta": 100, "overlay_color": "rgba(55,55,55,0.38)",    "sort_order": 2 },
+        { "option_key": "brown",        "label": "Brown",        "price_delta": 100, "overlay_color": "rgba(120,70,30,0.35)",   "sort_order": 3 },
+        { "option_key": "green",        "label": "Green",        "price_delta": 100, "overlay_color": "rgba(30,90,60,0.32)",    "sort_order": 4 },
+        { "option_key": "rose",         "label": "Rose",         "price_delta": 120, "overlay_color": "rgba(200,100,120,0.30)", "sort_order": 5 },
+        { "option_key": "blue_mirror",  "label": "Blue mirror",  "price_delta": 250, "overlay_color": "rgba(60,120,200,0.42)",  "sort_order": 6 },
+        { "option_key": "gradient",     "label": "Gradient",     "price_delta": 200, "overlay_color": "rgba(50,50,50,0.42)",    "sort_order": 7 },
+        { "option_key": "photochromic", "label": "Photochromic", "price_delta": 800, "overlay_color": "rgba(80,80,80,0.22)",    "sort_order": 8 }
+      ]
+    },
+    {
+      "group_key": "polarization",
+      "label": "Polarization",
+      "help_title": "Polarized lenses",
+      "help_body": "Polarized lenses block horizontal light glare from water, snow, roads, and glass. Excellent for driving, fishing, and the beach. Slightly darker look indoors.",
+      "applies_to": ["sunglasses"],
+      "sort_order": 6,
+      "options": [
+        { "option_key": "no",  "label": "Not polarized", "price_delta": 0,   "overlay_color": null, "sort_order": 1 },
+        { "option_key": "yes", "label": "Polarized",     "price_delta": 350, "overlay_color": null, "sort_order": 2 }
+      ]
+    },
+    {
+      "group_key": "coating",
+      "label": "Coating",
+      "help_title": "Lens coatings",
+      "help_body": "Anti-reflective reduces glare from screens and lights. Blue-light filter reduces blue-spectrum exposure from devices. AR + blue-light combines both. Scratch-resistant is a hard protective layer.",
+      "applies_to": ["optical_frame", "lenses", "sunglasses"],
+      "sort_order": 7,
+      "options": [
+        { "option_key": "none",    "label": "None",              "price_delta": 0,   "overlay_color": null, "sort_order": 1 },
+        { "option_key": "ar",      "label": "Anti-reflective",   "price_delta": 250, "overlay_color": null, "sort_order": 2 },
+        { "option_key": "blue",    "label": "Blue-light filter", "price_delta": 400, "overlay_color": null, "sort_order": 3 },
+        { "option_key": "ar_blue", "label": "AR + blue-light",   "price_delta": 550, "overlay_color": null, "sort_order": 4 },
+        { "option_key": "scratch", "label": "Scratch-resistant", "price_delta": 200, "overlay_color": null, "sort_order": 5 }
+      ]
+    },
+    {
+      "group_key": "contactSchedule",
+      "label": "Wearing schedule",
+      "help_title": "Contact lens schedule",
+      "help_body": "How often you replace your lenses. Daily disposables are the healthiest. Bi-weekly and monthly are more economical.",
+      "applies_to": ["contact_lenses"],
+      "sort_order": 8,
+      "options": [
+        { "option_key": "daily",    "label": "Daily disposable", "price_delta": 0, "overlay_color": null, "sort_order": 1 },
+        { "option_key": "biweekly", "label": "Bi-weekly",        "price_delta": 0, "overlay_color": null, "sort_order": 2 },
+        { "option_key": "monthly",  "label": "Monthly",          "price_delta": 0, "overlay_color": null, "sort_order": 3 }
+      ]
+    },
+    {
+      "group_key": "contactType",
+      "label": "Lens correction",
+      "help_title": "Contact lens correction",
+      "help_body": "Sphere corrects basic short- or long-sightedness. Toric corrects astigmatism. Multifocal works like progressive lenses in a contact.",
+      "applies_to": ["contact_lenses"],
+      "sort_order": 9,
+      "options": [
+        { "option_key": "sphere",     "label": "Sphere",              "price_delta": 0,   "overlay_color": null, "sort_order": 1 },
+        { "option_key": "toric",      "label": "Toric (astigmatism)", "price_delta": 200, "overlay_color": null, "sort_order": 2 },
+        { "option_key": "multifocal", "label": "Multifocal",          "price_delta": 400, "overlay_color": null, "sort_order": 3 }
+      ]
+    },
+    {
+      "group_key": "accessoryFinish",
+      "label": "Finish",
+      "help_title": null,
+      "help_body": null,
+      "applies_to": ["accessory"],
+      "sort_order": 10,
+      "options": [
+        { "option_key": "standard", "label": "Standard",     "price_delta": 0,   "overlay_color": null, "sort_order": 1 },
+        { "option_key": "premium",  "label": "Premium",      "price_delta": 100, "overlay_color": null, "sort_order": 2 },
+        { "option_key": "gift",     "label": "Gift wrapped", "price_delta": 150, "overlay_color": null, "sort_order": 3 }
+      ]
+    }
+  ]
+}
