@@ -20,6 +20,7 @@ const EMPTY_FORM = {
   price: '',
   status: 'active',
   hasConfigurator: false,
+  condition: 'new',
 };
 
 function pretty(slug) {
@@ -65,6 +66,7 @@ function ProductModal({
             initialProduct.has_configurator === undefined
               ? true
               : initialProduct.has_configurator,
+          condition: initialProduct.condition || 'new',
         }
       : EMPTY_FORM
   );
@@ -238,6 +240,7 @@ function ProductModal({
         price: Number(form.price),
         status: form.status,
         hasConfigurator: form.hasConfigurator,
+        condition: form.condition,
       };
 
       if (isEdit) {
@@ -434,6 +437,22 @@ function ProductModal({
               <option value="archived">Archived</option>
             </select>
           </label>
+
+          <label>
+            Condition
+            <select
+              value={form.condition}
+              onChange={(e) => update('condition', e.target.value)}
+            >
+              <option value="new">Brand New</option>
+              <option value="used">Pre-owned</option>
+            </select>
+          </label>
+
+
+
+
+
 
           <label>
             Description (optional)
@@ -724,7 +743,14 @@ export default function Products() {
                   </td>
                   <td>{p.category_name || '—'}</td>
                   <td>{p.brand_name || <span className="muted">—</span>}</td>
-                  <td>{pretty(p.product_type)}</td>
+                  <td>
+                    {pretty(p.product_type)}
+                    {p.condition === 'used' && (
+                      <div className="erp-cell-sub" style={{ color: '#8A6B1E', fontWeight: '900' }}>
+                        Pre-Owned
+                      </div>
+                    )}
+                  </td>
                   <td className="erp-cell-price">{formatZar(p.price)}</td>
                   <td style={{ textAlign: 'center' }}>
                     <span className={`badge badge-${p.status}`}>

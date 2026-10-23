@@ -448,7 +448,7 @@ heroLabelDark: {
   authFootnote: { color: '#AAB5C1', fontSize: 10, lineHeight: 17, textAlign: 'center', marginTop: 20 },
   // --- Filter tabs (added) ---
   filterBar: {
-    paddingTop: 14,
+    paddingTop: 4,
     paddingBottom: 2,
   },
   filterContent: {
@@ -635,6 +635,58 @@ heroLabelDark: {
     marginTop: 14,
     textAlign: 'center',
   },
+
+
+
+
+
+
+
+    // --- Sub Filter Tabs (Child Categories) ---
+  subFilterBar: {
+    paddingBottom: 8,
+  },
+  subFilterTab: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#F5F2EB',
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  subFilterTabActive: {
+    backgroundColor: '#FFFFFF',
+    borderColor: C.teal,
+  },
+  subFilterTabText: {
+    color: C.muted,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  subFilterTabTextActive: {
+    color: C.teal,
+    fontWeight: '900',
+  },
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

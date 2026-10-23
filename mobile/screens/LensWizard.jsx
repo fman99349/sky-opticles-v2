@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Pressable,
   SafeAreaView,
@@ -20,6 +20,7 @@ import TypeIndexStep from './TypeIndexStep';
 import UpgradesStep from './UpgradesStep';
 import ReviewStep from './ReviewStep';
 import WizardPreview from '../components/WizardPreview';
+import { fetchLensOptions } from '../utils/api';
 // The Lens Wizard is a guided, 6-step flow that replaces the single-screen
 // LensConfigurator for signed-in customers. Structure mirrors Lensmart:
 //
@@ -60,6 +61,20 @@ export default function LensWizard({
     ...defaultConfigForProductType(product.product_type),
     ...(initialConfig || {}),
   }));
+
+
+  const [liveGroups, setLiveGroups] = useState(null);
+
+  useEffect(() => {
+    fetchLensOptions()
+      .then((data) => setLiveGroups(data))
+      .catch(() => {
+        // If offline, it will fall back to the hardcoded lensOptions.js
+      });
+  }, []);
+
+
+
 
   const step = STEPS[stepIndex];
   const isFirst = stepIndex === 0;

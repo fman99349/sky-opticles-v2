@@ -67,9 +67,23 @@ export function AdminAuthProvider({ children }) {
     setToken(null);
   }, []);
 
+  const updateProfile = useCallback(async (data) => {
+    const result = await adminApi.updateProfile(data);
+    setAdmin(result.data.admin);
+    return result.data.admin;
+  }, []);
+
+
+
+
+
+
+
+
+
   const value = useMemo(
-    () => ({ admin, token, restoring, signIn, signOut }),
-    [admin, token, restoring, signIn, signOut]
+    () => ({ admin, token, restoring, signIn, signOut, updateProfile }),
+    [admin, token, restoring, signIn, signOut, updateProfile]
   );
 
   return (

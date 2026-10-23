@@ -4,6 +4,7 @@ import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { useAuth } from '../auth/AuthContext';
 import { API_URL } from '../utils/api';
+import { deleteNotification, clearAllNotifications } from '../utils/api';
 
 // Expo SDK 57 bug workaround: Conditional require prevents the Expo Go crash
 let Notifications = null;
@@ -116,12 +117,38 @@ export function NotificationProvider({ children }) {
     }
   };
 
+
+    const removeNotification = async (id) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+    try {
+      await deleteNotification(token, id);
+    } catch (e) {
+      fetchNotifications(); // revert if failed
+    }
+  };
+
+  const clearAll = async () => {
+    setNotifications([]);
+    setUnreadCount(0);
+    try {
+      await clearAllNotifications(token);
+    } catch (e) {
+      fetchNotifications();
+    }
+  };
+
+
+
+
+
   const value = {
     notifications,
     unreadCount,
     loading,
     fetchNotifications,
     markAllAsRead,
+    removeNotification,
+    clearAll,
   };
 
   return (

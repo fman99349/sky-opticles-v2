@@ -5,6 +5,15 @@ const pool = require('../db');
 const router = express.Router();
 
 
+// Helper: Fetch exchange rate for a given currency
+async function getExchangeRate(client, currency) {
+  if (!currency || currency === 'ZAR') return 1;
+  const res = await client.query('SELECT rate_to_base FROM exchange_rates WHERE currency_code = $1', [currency]);
+  return res.rows.length > 0 ? Number(res.rows[0].rate_to_base) : 1;
+}
+
+
+
 
 function makeSlug(value) {
   return value
@@ -50,10 +59,10 @@ function handleError(res, error, operation) {
 router.get('/categories', async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT id, name, slug, description, is_active, created_at
+      SELECT id, name, slug, description, is_active, parent_id, created_at
       FROM categories
       WHERE is_active = TRUE
-      ORDER BY name ASC
+      ORDER BY id ASC
     `);
 
     res.json({ data: result.rows });
@@ -64,7 +73,7 @@ router.get('/categories', async (req, res) => {
 
 // POST /api/categories
 router.post('/categories', async (req, res) => {
-  const { name, description } = req.body;
+  const { name, description, parentId } = req.body;
 
   if (typeof name !== 'string' || !name.trim() || name.trim().length > 100) {
     return res.status(400).json({
@@ -82,13 +91,14 @@ router.post('/categories', async (req, res) => {
 
   try {
     const result = await pool.query(
-      `INSERT INTO categories (name, slug, description)
-       VALUES ($1, $2, $3)
-       RETURNING id, name, slug, description, is_active, created_at`,
+      `INSERT INTO categories (name, slug, description, parent_id)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, name, slug, description, is_active, parent_id, created_at`,
       [
         name.trim(),
         slug,
         typeof description === 'string' ? description.trim() || null : null,
+        parentId ? Number(parentId) : null,
       ]
     );
 
@@ -207,8 +217,27 @@ router.get('/products', async (req, res) => {
     addFilter('p.product_type = ?', req.query.type.trim());
   }
 
+
+
+    if (req.query.condition !== undefined) {
+    if (!['new', 'used'].includes(req.query.condition)) {
+      return res.status(400).json({ error: 'condition must be new or used.' });
+    }
+    addFilter('p.condition = ?', req.query.condition);
+  }
+
+  if (req.query.parentCategoryId !== undefined) {
+    if (!isPositiveInteger(req.query.parentCategoryId)) {
+      return res.status(400).json({ error: 'Invalid parentCategoryId.' });
+    }
+    values.push(Number(req.query.parentCategoryId));
+    conditions.push(`c.parent_id = $${values.length}`);
+  }
   const whereClause = conditions.join(' AND ');
   const offset = (page - 1) * limit;
+
+  const currency = req.query.currency || 'ZAR';
+  const rate = await getExchangeRate(pool, currency);
 
   try {
     const countResult = await pool.query(
@@ -218,7 +247,9 @@ router.get('/products', async (req, res) => {
       values
     );
 
-    const listValues = [...values, limit, offset];
+   
+
+        const listValues = [...values, limit, offset];
 
     const result = await pool.query(
       `SELECT
@@ -227,9 +258,10 @@ router.get('/products', async (req, res) => {
          p.slug,
          p.description,
          p.product_type,
-         p.price,
+         COALESCE(pcp.price, p.price * ${rate})::numeric(12,2) AS price,
          p.status,
-          p.has_configurator,
+         p.has_configurator,
+         p.condition,
          p.created_at,
          c.id AS category_id,
          c.name AS category_name,
@@ -245,11 +277,12 @@ router.get('/products', async (req, res) => {
        FROM products p
        JOIN categories c ON c.id = p.category_id
        LEFT JOIN brands b ON b.id = p.brand_id
+       LEFT JOIN product_currency_prices pcp ON pcp.product_id = p.id AND pcp.currency_code = $${listValues.length + 1}
        WHERE ${whereClause}
        ORDER BY p.created_at DESC, p.id DESC
        LIMIT $${listValues.length - 1}
        OFFSET $${listValues.length}`,
-      listValues
+      [...listValues, currency]
     );
 
     // Convert stored relative paths (/uploads/products/...) to absolute
@@ -279,28 +312,34 @@ router.get('/products/:id', async (req, res) => {
     return res.status(400).json({ error: 'Invalid product ID.' });
   }
 
+  const currency = req.query.currency || 'ZAR';
+  const rate = await getExchangeRate(pool, currency);
+
   try {
     const productResult = await pool.query(
       `SELECT
          p.*,
+         COALESCE(pcp.price, p.price * ${rate})::numeric(12,2) AS price,
          c.name AS category_name,
          b.name AS brand_name
        FROM products p
        JOIN categories c ON c.id = p.category_id
        LEFT JOIN brands b ON b.id = p.brand_id
+       LEFT JOIN product_currency_prices pcp ON pcp.product_id = p.id AND pcp.currency_code = $2
        WHERE p.id = $1`,
-      [Number(req.params.id)]
+      [Number(req.params.id), currency]
     );
 
     if (productResult.rows.length === 0) {
       return res.status(404).json({ error: 'Product not found.' });
     }
 
-    const [variantsResult, imagesResult] = await Promise.all([
+    const [variantsResult, imagesResult, modelsResult] = await Promise.all([
             pool.query(
         `SELECT id, sku, color, color_hex, frame_material, frame_shape,
-                size_label, price_override, stock_quantity,
-                reorder_level, is_active
+                size_label, 
+                CASE WHEN price_override IS NOT NULL THEN (price_override * ${rate})::numeric(12,2) ELSE NULL END AS price_override,
+                stock_quantity, reorder_level, is_active, attributes
          FROM product_variants
          WHERE product_id = $1
          ORDER BY id`,
@@ -310,10 +349,17 @@ router.get('/products/:id', async (req, res) => {
         `SELECT id, image_url, alt_text, is_primary, sort_order, variant_id, lens_layer_url
          FROM product_images
          WHERE product_id = $1
-         ORDER BY is_primary DESC, sort_order ASC, id ASC`,
-        [Number(req.params.id)]
-      ),
-    ]);
+               ORDER BY is_primary DESC, sort_order ASC, id ASC`,
+      [Number(req.params.id)]
+    ),
+    pool.query(
+      `SELECT id, variant_id, model_url, format, poster_url, file_size_bytes, is_primary
+       FROM product_3d_models
+       WHERE product_id = $1
+       ORDER BY is_primary DESC, variant_id NULLS FIRST, id ASC`,
+      [Number(req.params.id)]
+    ),
+  ]);
 
     const product = productResult.rows[0];
 
@@ -326,13 +372,22 @@ router.get('/products/:id', async (req, res) => {
     const primary = images.find((img) => img.is_primary);
 
     res.json({
-      data: {
-        ...product,
-        primary_image: toAbsoluteUrl(req, primary ? primary.image_url : null),
-        variants: variantsResult.rows,
-        images,
-      },
-    });
+  data: {
+    ...product,
+    primary_image: toAbsoluteUrl(req, primary ? primary.image_url : null),
+    variants: variantsResult.rows,
+    images,
+    models_3d: modelsResult.rows.map((m) => ({
+      ...m,
+      model_url: toAbsoluteUrl(req, m.model_url),
+    })),
+  },
+});
+
+
+
+
+
   } catch (error) {
     handleError(res, error, 'Get product failed');
   }
@@ -371,6 +426,7 @@ router.post('/products', async (req, res) => {
     price,
     status,
     hasConfigurator,
+    condition = 'new',
   } = req.body;
 
   if (typeof name !== 'string' || !name.trim() || name.trim().length > 200) {
@@ -408,6 +464,13 @@ router.post('/products', async (req, res) => {
     });
   }
 
+  if (!['new', 'used'].includes(condition)) {
+    return res.status(400).json({ error: 'condition must be new or used.' });
+  }
+
+
+
+
   if (
     price === undefined ||
     price === null ||
@@ -438,8 +501,8 @@ router.post('/products', async (req, res) => {
         const result = await pool.query(
       `INSERT INTO products
          (category_id, brand_id, name, slug, description,
-          product_type, price, status, has_configurator)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          product_type, price, status, has_configurator, condition)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING *`,
       [
         Number(categoryId),
@@ -451,6 +514,7 @@ router.post('/products', async (req, res) => {
         Number(price),
         productStatus,
         hasConfigurator === undefined ? true : hasConfigurator,
+        condition,
       ]
     );
 
@@ -482,6 +546,7 @@ router.patch('/products/:id', async (req, res) => {
     price,
     status,
     hasConfigurator,
+    condition,
   } = req.body;
 
   // Load the existing product so we know the current name before deciding
@@ -524,6 +589,13 @@ router.patch('/products/:id', async (req, res) => {
       });
     }
     updates.has_configurator = hasConfigurator;
+  }
+
+    if (condition !== undefined) {
+    if (!['new', 'used'].includes(condition)) {
+      return res.status(400).json({ error: 'condition must be new or used.' });
+    }
+    updates.condition = condition;
   }
   if (categoryId !== undefined) {
     if (!isPositiveInteger(categoryId)) {
@@ -712,7 +784,7 @@ router.patch('/categories/:id', async (req, res) => {
     return res.status(400).json({ error: 'Invalid category ID.' });
   }
 
-  const { name, description, isActive } = req.body || {};
+  const { name, description, isActive, parentId } = req.body || {};
 
   let existing;
   try {
@@ -758,7 +830,9 @@ router.patch('/categories/:id', async (req, res) => {
     }
     updates.is_active = isActive;
   }
-
+  if (parentId !== undefined) {
+    updates.parent_id = parentId ? Number(parentId) : null;
+  }
   if (Object.keys(updates).length === 0) {
     return res.status(400).json({ error: 'No fields to update.' });
   }

@@ -1,7 +1,7 @@
 // Single place where the mobile app talks to the backend.
 // Keep this in sync with the desktop admin's admin/src/api/client.js base URL.
 
-export const API_URL = 'http://10.252.93.80:3000/api';
+export const API_URL = 'http://10.195.227.20:3000/api';
 
 async function request(path, options = {}) {
   const url = `${API_URL}${path}`;
@@ -34,8 +34,8 @@ async function request(path, options = {}) {
   return payload;
 }
 
-export async function fetchProducts() {
-  const result = await request('/products');
+export async function fetchProducts(currency = 'ZAR') {
+  const result = await request(`/products?currency=${currency}`);
   if (!Array.isArray(result.data)) {
     throw new Error('Unexpected products response');
   }
@@ -56,8 +56,8 @@ export async function fetchCategories() {
 // Fetch a single product by id, including its variants[] and images[].
 // Both arrays are needed by the mobile detail screen to build the variant
 // picker and to choose the correct preview image per colour.
-export async function fetchProductDetail(id) {
-  return request(`/products/${id}`);
+export async function fetchProductDetail(id, currency = 'ZAR') {
+  return request(`/products/${id}?currency=${currency}`);
 }
 
 
@@ -243,4 +243,47 @@ export async function deleteAddress(token, id) {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${token}` },
   });
+}
+
+export async function deleteNotification(token, id) {
+  if (!token) throw new Error('Please sign in.');
+  return request(`/notifications/${id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function clearAllNotifications(token) {
+  if (!token) throw new Error('Please sign in.');
+  return request('/notifications', {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function fetchLensOptions(currency = 'ZAR') {
+  const result = await request(`/lens-options?currency=${currency}`);
+  return result.data.groups;
+}
+
+
+// --- Password Reset ---
+export async function requestPasswordReset(email) {
+  return request('/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function resetPassword(email, token, newPassword) {
+  return request('/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ email, token, newPassword }),
+  });
+}
+
+export async function fetchProduct3DModel(productId, variantId = null) {
+  const qs = variantId ? `?variantId=${variantId}` : '';
+  const result = await request(`/products/${productId}/3d-models${qs}`);
+  return result.data?.[0] || null;
 }

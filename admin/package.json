@@ -1,7 +1,7 @@
 {
   "name": "admin",
   "version": "1.0.0",
-  "description": "SKY OPTICLES desktop administration application",
+  "description": "DMD desktop administration application",
   "main": "electron/main.js",
   "scripts": {
     "vite:dev": "vite",

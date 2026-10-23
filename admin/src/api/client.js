@@ -5,7 +5,7 @@ const API_BASE_URL =
   (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL) ||
   'http://localhost:3000/api';
 
-  // Reads the admin JWT from localStorage. Returns an empty object if no
+// Reads the admin JWT from localStorage. Returns an empty object if no
 // token is stored — the backend will 401 with a clear message in that case.
 const ADMIN_TOKEN_KEY = 'sky_opticles_admin_token';
 
@@ -19,16 +19,9 @@ function authHeaders() {
   return {};
 }
 
-
-
-
-
-
-
-
 async function request(path, options = {}) {
   const url = `${API_BASE_URL}${path}`;
-    const config = {
+  const config = {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -38,8 +31,8 @@ async function request(path, options = {}) {
   };
 
   const response = await fetch(url, config);
-
   const text = await response.text();
+  
   let payload = null;
   if (text) {
     try { payload = JSON.parse(text); } catch { payload = text; }
@@ -63,7 +56,7 @@ async function request(path, options = {}) {
 // NOT forward the default JSON header here.
 async function uploadRequest(path, formData, options = {}) {
   const url = `${API_BASE_URL}${path}`;
-    const response = await fetch(url, {
+  const response = await fetch(url, {
     method: 'POST',
     ...options,
     headers: {
@@ -94,7 +87,6 @@ async function uploadRequest(path, formData, options = {}) {
 
   return payload;
 }
-
 
 // Binary fetch helper for downloads that require an auth header.
 // Same token handling as request(), but returns a Blob instead of JSON.
@@ -127,28 +119,6 @@ async function fetchBlob(path, options = {}) {
   return response.blob();
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 export const api = {
   baseUrl: API_BASE_URL,
 
@@ -165,14 +135,10 @@ export const api = {
   deleteCategory: (id) =>
     request(`/categories/${id}`, { method: 'DELETE' }),
 
-
-
-
-
   listBrands: () => request('/brands'),
   createBrand: (body) =>
     request('/brands', { method: 'POST', body: JSON.stringify(body) }),
-    updateBrand: (id, body) =>
+  updateBrand: (id, body) =>
     request(`/brands/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(body),
@@ -195,12 +161,6 @@ export const api = {
   deleteProductType: (id) =>
     request(`/product-types/${id}`, { method: 'DELETE' }),
 
-
-
-
-
-
-
   listProducts: (params = {}) => {
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(params)) {
@@ -217,37 +177,46 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),
-      updateVariant: (variantId, body) =>
-    request(`/variants/${variantId}`, {
-      method: 'PATCH',
-      body: JSON.stringify(body),
-    }),
-  deleteVariant: (variantId) =>
-    request(`/variants/${variantId}`, { method: 'DELETE' }),
   deleteProduct: (id) =>
     request(`/products/${id}`, { method: 'DELETE' }),
+
   listVariants: (productId) => request(`/products/${productId}/variants`),
   createVariant: (productId, body) =>
     request(`/products/${productId}/variants`, {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+  updateVariant: (variantId, body) =>
+    request(`/variants/${variantId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  deleteVariant: (variantId) =>
+    request(`/variants/${variantId}`, { method: 'DELETE' }),
   updateStock: (variantId, stockQuantity) =>
     request(`/variants/${variantId}/stock`, {
       method: 'PATCH',
       body: JSON.stringify({ stockQuantity }),
     }),
 
-   listImages: (productId) => request(`/products/${productId}/images`),
+  listImages: (productId) => request(`/products/${productId}/images`),
   createImage: (productId, body) =>
     request(`/products/${productId}/images`, {
       method: 'POST',
       body: JSON.stringify(body),
     }),
-
+  updateImage: (productId, imageId, body) =>
+    request(`/products/${productId}/images/${imageId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  deleteImage: (productId, imageId) =>
+    request(`/products/${productId}/images/${imageId}`, {
+      method: 'DELETE',
+    }),
+    
   // Upload a file to the product images endpoint.
-  // `file` is a browser File object from <input type="file">.
-    uploadImage: (
+  uploadImage: (
     productId,
     file,
     { altText = '', isPrimary = false, sortOrder = 0, variantId = null, lensLayerFile = null } = {}
@@ -264,8 +233,7 @@ export const api = {
     return uploadRequest(`/products/${productId}/images/upload`, form);
   },
 
-  // Upload a lens-mask PNG for an existing image. Attaches it to the row's
-  // lens_layer_url. Overwrites (and cleans up) any previous mask file.
+  // Upload a lens-mask PNG for an existing image.
   uploadLensLayerForImage: (productId, imageId, file) => {
     const form = new FormData();
     form.append('lensLayer', file);
@@ -274,28 +242,40 @@ export const api = {
       form
     );
   },
+  // --- 3D Models ---
+  list3DModels: (productId) => request(`/products/${productId}/3d-models`),
+
+  upload3DModel: (productId, file, { variantId = null, isPrimary = true } = {}) => {
+    const form = new FormData();
+    form.append('model', file);
+    form.append('isPrimary', String(isPrimary));
+    if (variantId !== null && variantId !== undefined && variantId !== '') {
+      form.append('variantId', String(variantId));
+    }
+    return uploadRequest(`/products/${productId}/3d-models`, form);
+  },
+
+  delete3DModel: (modelId) =>
+    request(`/3d-models/${modelId}`, { method: 'DELETE' }),
 
 
 
+  // --- Admin Lens Options ---
+  createLensGroup: (body) =>
+    request('/admin/lens-groups', { method: 'POST', body: JSON.stringify(body) }),
+  updateLensGroup: (id, body) =>
+    request(`/admin/lens-groups/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteLensGroup: (id) =>
+    request(`/admin/lens-groups/${id}`, { method: 'DELETE' }),
+
+  createLensOption: (body) =>
+    request('/admin/lens-options', { method: 'POST', body: JSON.stringify(body) }),
+  updateLensOption: (id, body) =>
+    request(`/admin/lens-options/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteLensOption: (id) =>
+    request(`/admin/lens-options/${id}`, { method: 'DELETE' }),
 
 
-
-
-
-
-
-  // Update an existing image: is_primary, alt_text, sort_order.
-  updateImage: (productId, imageId, body) =>
-    request(`/products/${productId}/images/${imageId}`, {
-      method: 'PATCH',
-      body: JSON.stringify(body),
-    }),
-
-  // Delete an image (and its file if it lives under uploads/products).
-  deleteImage: (productId, imageId) =>
-    request(`/products/${productId}/images/${imageId}`, {
-      method: 'DELETE',
-    }),
 
   // --- Orders ---
   listOrders: (params = {}) => {
@@ -317,18 +297,26 @@ export const api = {
   markOrderPaid: (id) =>
     request(`/admin/orders/${id}/mark-paid`, { method: 'POST' }),
 
-  // Fetch a prescription file as a Blob. The caller turns it into a blob URL
-  // for viewing (window.open) or downloading. Requires admin auth.
+  // Fetch a prescription file as a Blob.
   downloadPrescription: (id) => fetchBlob(`/admin/prescriptions/${id}`),
-    // Public read-only endpoint serving lens option groups + options.
-  // Used by the Orders page to translate lens_config keys into readable labels.
+  
+  // Public read-only endpoint serving lens option groups + options.
   listLensOptions: () => request('/lens-options'),
 
-
-
-
-
-
+  // --- Admin Notifications ---
+  listAdminNotifications: () => request('/admin/notifications'),
+    // --- Admin Stats ---
+  getDashboardStats: () => request('/admin/stats'),
+  markAdminNotificationRead: (id) =>
+    request(`/admin/notifications/${id}/read`, { method: 'PATCH' }),
+  markAllAdminNotificationsRead: () =>
+    request('/admin/notifications/read-all', { method: 'PATCH' }),
 };
+
+
+
+
+
+
 
 export { API_BASE_URL };

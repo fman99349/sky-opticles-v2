@@ -48,6 +48,7 @@ export const loginStyles = {
     backgroundSize: 'cover',
     backgroundPosition: 'center',
     backgroundRepeat: 'no-repeat',
+    transition: 'opacity 1.5s ease-in-out',
   },
   heroFallback: {
     position: 'absolute',

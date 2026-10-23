@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -11,17 +11,40 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authStyles as a } from './authStyles';
 import { useAuth } from '../auth/AuthContext';
 
-const C = { navy: '#101D2C' };
+const C = { navy: '#101D2C', muted: '#7C8792' };
 
-export default function SignInScreen({ onBack, onGoToSignUp }) {
+// Key used to store the last successful login
+const LAST_LOGIN_KEY = 'sky_last_login';
+
+export default function SignInScreen({ onBack, onGoToSignUp, onForgotPassword }) {
   const { signIn } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  // 1. Load saved credentials on mount
+  useEffect(() => {
+    const loadSaved = async () => {
+      try {
+        const saved = await AsyncStorage.getItem(LAST_LOGIN_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          setEmail(parsed.email || '');
+          setPassword(parsed.password || '');
+        }
+      } catch (e) {
+        // Ignore storage read errors
+      }
+    };
+    loadSaved();
+  }, []);
 
   const submit = async () => {
     setError('');
@@ -32,6 +55,14 @@ export default function SignInScreen({ onBack, onGoToSignUp }) {
     setSubmitting(true);
     try {
       await signIn({ email: email.trim(), password });
+      
+      // 2. Save credentials on successful login
+      // Note: For production, consider removing the password from this save.
+      await AsyncStorage.setItem(
+        LAST_LOGIN_KEY, 
+        JSON.stringify({ email: email.trim(), password })
+      );
+
       // App.js detects the auth state change and routes to the dashboard.
     } catch (err) {
       setError(err.message || 'Could not sign in. Please try again.');
@@ -93,18 +124,48 @@ export default function SignInScreen({ onBack, onGoToSignUp }) {
 
           <View style={a.field}>
             <Text style={a.label}>PASSWORD</Text>
-            <TextInput
-              value={password}
-              onChangeText={setPassword}
-              placeholder="Enter your password"
-              placeholderTextColor="#B0B7C1"
-              secureTextEntry
-              style={a.input}
-              editable={!submitting}
-              returnKeyType="go"
-              onSubmitEditing={submit}
-            />
+            {/* Custom wrapper for the password field to hold the eye icon */}
+            <View style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: '#FFFFFF',
+              borderWidth: 1,
+              borderColor: '#E7E3DC',
+              borderRadius: 6,
+            }}>
+              <TextInput
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Enter your password"
+                placeholderTextColor="#B0B7C1"
+                secureTextEntry={!showPassword}
+                style={{
+                  flex: 1,
+                  paddingVertical: 13,
+                  paddingHorizontal: 14,
+                  fontSize: 14,
+                  color: '#17283A',
+                }}
+                editable={!submitting}
+                returnKeyType="go"
+                onSubmitEditing={submit}
+              />
+              <Pressable
+                onPress={() => setShowPassword(!showPassword)}
+                hitSlop={8}
+                style={{ paddingHorizontal: 14 }}
+              >
+                <Ionicons
+                  name={showPassword ? 'eye-off' : 'eye'}
+                  size={20}
+                  color={C.muted}
+                />
+              </Pressable>
+            </View>
           </View>
+                    <Pressable onPress={onForgotPassword} style={{ alignSelf: 'flex-end', marginTop: 4, marginBottom: 8 }}>
+            <Text style={{ fontSize: 12, color: C.teal, fontWeight: '700' }}>Forgot password?</Text>
+          </Pressable>
 
           <Pressable
             onPress={submit}

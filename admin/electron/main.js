@@ -12,7 +12,7 @@ function createWindow() {
     minHeight: 720,
     backgroundColor: '#101D2C', // matches the app's navy — avoids a flash on load
     show: false,
-    title: 'Sky Optics Admin',
+        title: 'DMD General Market Place Management System',
     autoHideMenuBar: true, // belt-and-braces in case the menu reappears on some platforms
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

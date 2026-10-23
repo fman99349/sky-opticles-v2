@@ -11,6 +11,8 @@ import Images from './pages/Images.jsx';
 import Variants from './pages/Variants.jsx';
 import Orders from './pages/Orders.jsx';
 import ProductTypes from './pages/ProductTypes.jsx';
+import AdminBell from './components/AdminBell.jsx';
+import LensOptions from './pages/LensOptions.jsx';
 import {
   Bell,
   ClipboardList,
@@ -20,21 +22,27 @@ import {
   Package,
   Folder,
   Tag,
-  Settings,
+  SettingsIcon,
   Image as ImageIcon,
+  List,
+  Eye,
+  Layers,
 } from 'lucide-react';
+import Settings from './pages/Settings.jsx';
 // Navigation items for the admin sidebar.
 // Only Dashboard and Products are wired to real pages today. The rest
 // are explicit placeholders — no invented functionality.
 const NAV = [
   { id: 'dashboard',  label: 'Dashboard',  icon: Home,      render: () => <Dashboard /> },
   { id: 'products',   label: 'Products',   icon: Package,   render: () => <Products /> },
-    { id: 'orders', label: 'Orders', icon: ClipboardList, render: () => <Orders /> },
+  { id: 'orders',     label: 'Orders',     icon: ClipboardList, render: () => <Orders /> },
   { id: 'categories', label: 'Categories', icon: Folder,    render: () => <Categories /> },
   { id: 'brands',     label: 'Brands',     icon: Tag,       render: () => <Brands /> },
-  { id: 'variants',   label: 'Variants',   icon: Settings,  render: () => <Variants /> },
+  { id: 'variants',   label: 'Variants',   icon: List,      render: () => <Variants /> },
+  { id: 'lensOptions',label: 'Lens Options',icon: Eye,      render: () => <LensOptions /> },
   { id: 'images',     label: 'Images',     icon: ImageIcon, render: () => <Images /> },
-  { id: 'productTypes', label: 'Product Types', icon: Settings, render: () => <ProductTypes /> },
+  { id: 'productTypes',label: 'Product Types',icon: Layers, render: () => <ProductTypes /> },
+    { id: 'settings', label: 'Settings', icon: SettingsIcon, render: () => <Settings /> },
 ];
 
 const SIDEBAR_KEY = 'sky_admin_sidebar_collapsed';
@@ -84,15 +92,8 @@ function Shell({ admin, onSignOut }) {
         </div>
 
                 <div className="app-topbar-actions">
-          <button
-            type="button"
-            className="topbar-icon-btn"
-            onClick={() => showToast('Notifications coming soon.')}
-            title="Notifications"
-            aria-label="Notifications"
-          >
-            <Bell size={18} />
-          </button>
+                  <AdminBell /> {/* <-- Use the new component here */}
+          
 
           <button
             type="button"
@@ -109,9 +110,9 @@ function Shell({ admin, onSignOut }) {
       <div className={`app-body${collapsed ? ' collapsed' : ''}`}>
         <aside className="sidebar">
           <div className="brand">
-            <span className="brand-mark">SKY</span>
-            <span className="brand-name">OPTICLES</span>
-            <span className="brand-sub">Admin</span>
+            <span className="brand-mark">DMD</span>
+            
+            <span className="brand-sub">Management System💎</span>
           </div>
 
           <nav className="nav">
@@ -137,11 +138,7 @@ function Shell({ admin, onSignOut }) {
           <div className="sidebar-footer">
             {!collapsed ? (
               <>
-                <div className="admin-info">
-                  <strong style={{ color: '#FFFFFF' }}>{admin.name}</strong>
-                  <br />
-                  {admin.email}
-                </div>
+                
 
                 <button
                   className="ghost"
@@ -151,10 +148,7 @@ function Shell({ admin, onSignOut }) {
                   SIGN OUT
                 </button>
 
-                <div className="api-indicator" style={{ marginTop: 12 }}>
-                  <span className="dot" />
-                  <span>{adminApi.baseUrl}</span>
-                </div>
+                
               </>
             ) : (
               <button

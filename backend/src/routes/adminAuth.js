@@ -134,5 +134,100 @@ router.get('/admin/auth/me', requireAdmin, async (req, res) => {
   res.json({ data: { admin: publicAdmin(req.admin) } });
 });
 
+
+// PATCH /api/admin/auth/me
+// Allows the logged-in admin to update their name, email, or password.
+router.patch('/admin/auth/me', requireAdmin, async (req, res) => {
+  const { name, email, currentPassword, newPassword } = req.body || {};
+  const adminId = req.admin.id;
+
+  const updates = {};
+  const values = [];
+
+  // 1. Validate Name
+  if (name !== undefined) {
+    if (typeof name !== 'string' || !name.trim() || name.trim().length > 120) {
+      return res.status(400).json({ error: 'Name must be 1-120 characters.' });
+    }
+    updates.name = name.trim();
+  }
+
+  // 2. Validate Email (Requires current password for security)
+  if (email !== undefined && email !== req.admin.email) {
+    if (!currentPassword) {
+      return res.status(400).json({ error: 'Current password is required to change email.' });
+    }
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ error: 'Valid email is required.' });
+    }
+    
+    // Verify current password
+    const pwdRes = await pool.query('SELECT password_hash FROM admins WHERE id = $1', [adminId]);
+    const ok = await bcrypt.compare(currentPassword, pwdRes.rows[0].password_hash);
+    if (!ok) {
+      return res.status(401).json({ error: 'Incorrect current password.' });
+    }
+
+    updates.email = email.trim();
+  }
+
+  // 3. Validate New Password (Requires current password for security)
+  if (newPassword) {
+    if (!currentPassword) {
+      return res.status(400).json({ error: 'Current password is required to set a new password.' });
+    }
+    if (newPassword.length < 8 || newPassword.length > 72) {
+      return res.status(400).json({ error: 'New password must be 8-72 characters.' });
+    }
+
+    // Verify current password
+    const pwdRes = await pool.query('SELECT password_hash FROM admins WHERE id = $1', [adminId]);
+    const ok = await bcrypt.compare(currentPassword, pwdRes.rows[0].password_hash);
+    if (!ok) {
+      return res.status(401).json({ error: 'Incorrect current password.' });
+    }
+
+    const newHash = await bcrypt.hash(newPassword, BCRYPT_COST);
+    updates.password_hash = newHash;
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return res.status(400).json({ error: 'No changes requested.' });
+  }
+
+  // Build query
+  const setClauses = [];
+  for (const [col, val] of Object.entries(updates)) {
+    values.push(val);
+    setClauses.push(`${col} = $${values.length}`);
+  }
+  setClauses.push('updated_at = NOW()');
+  values.push(adminId);
+
+  try {
+    const result = await pool.query(
+      `UPDATE admins SET ${setClauses.join(', ')} WHERE id = $${values.length} 
+       RETURNING id, name, email, created_at`,
+      values
+    );
+    res.json({ data: { admin: publicAdmin(result.rows[0]) } });
+  } catch (error) {
+    if (error.code === '23505') {
+      return res.status(409).json({ error: 'That email is already in use by another admin.' });
+    }
+    handleError(res, error, 'Update admin profile failed');
+  }
+});
+
+
+
+
+
+
+
+
+
+
+
 module.exports = router;
 module.exports.requireAdmin = requireAdmin;

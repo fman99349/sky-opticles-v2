@@ -1,18 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAdminAuth } from '../auth/AdminAuthContext';
 import { loginStyles as s } from './loginStyles';
+import Typewriter from '../components/Typewriter';
 
-// Optional hero image. Vite's import.meta.glob returns an empty object when
-// no matching file exists, so the page falls back gracefully to a solid
-// navy background until you drop an image into admin/src/assets/.
-//
-// Drop any of these names and it will be picked up:
-//   admin/src/assets/login-hero.jpg
-//   admin/src/assets/login-hero.png
-//   admin/src/assets/login-hero.webp
-const heroModules = import.meta.glob('../assets/images/login-hero.*', { eager: true });
-const heroImages = Object.values(heroModules);
-const heroUrl = heroImages[0]?.default || null;
+// Marketplace showcase images and their corresponding typing text
+const SLIDES = [
+  {
+    image: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=1200&q=85',
+    text: 'Manage your global marketplace.',
+  },
+  {
+    image: 'https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=1200&q=85',
+    text: 'Curate products from anywhere.',
+  },
+  {
+    image: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?auto=format&fit=crop&w=1200&q=85',
+    text: 'Track orders in real-time.',
+  },
+];
+
+const LAST_LOGIN_KEY = 'dmd_admin_last_login';
 
 export default function LoginPage() {
   const { signIn } = useAdminAuth();
@@ -20,6 +27,38 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  
+  // Slideshow state
+  const [slideIndex, setSlideIndex] = useState(0);
+  const [imageOpacity, setImageOpacity] = useState(1);
+
+  // 1. Load saved credentials on mount
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(LAST_LOGIN_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        setEmail(parsed.email || '');
+        setPassword(parsed.password || '');
+      }
+    } catch {
+      // Ignore storage read errors
+    }
+  }, []);
+
+  // Auto-advance slides every 6 seconds
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setImageOpacity(0);
+      
+      setTimeout(() => {
+        setSlideIndex((current) => (current + 1) % SLIDES.length);
+        setImageOpacity(1);
+      }, 800);
+
+    }, 6000);
+    return () => clearInterval(timer);
+  }, []);
 
   const submit = async (event) => {
     event.preventDefault();
@@ -37,8 +76,14 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       await signIn({ email: email.trim(), password });
-      // On success, the AuthContext flips `admin`, and App.jsx renders
-      // the shell. No navigation is needed from this component.
+      
+      // 2. Save credentials on successful login
+      // Note: For production, consider removing the password from this save.
+      window.localStorage.setItem(
+        LAST_LOGIN_KEY, 
+        JSON.stringify({ email: email.trim(), password })
+      );
+
     } catch (err) {
       setError(err.message || 'Could not sign in. Please try again.');
     } finally {
@@ -46,21 +91,32 @@ export default function LoginPage() {
     }
   };
 
+  const currentSlide = SLIDES[slideIndex];
+
   return (
     <div style={s.container}>
-      {/* Left pane — brand + optional hero image */}
+      {/* Left pane — auto-sliding images + brand */}
       <div style={s.leftPane}>
-        {heroUrl ? (
-          <div style={{ ...s.heroImage, backgroundImage: `url(${heroUrl})` }} />
-        ) : (
-          <div style={s.heroFallback} />
-        )}
+        <div
+          style={{
+            ...s.heroImage,
+            backgroundImage: `url(${currentSlide.image})`,
+            opacity: imageOpacity,
+          }}
+        />
 
         <div style={s.leftOverlay} />
 
         <div style={s.leftContent}>
-          <h1 style={s.brandTitle}>THE SKY OPTICS</h1>
-          <p style={s.brandCaption}>EYEWEAR • EXPRESSION • EXCELLENCE</p>
+          <h1 style={s.brandTitle}>Diamond Dee💎</h1>
+          <p style={s.brandCaption}>GLOBAL MARKETPLACE • MANAGEMENT SYSTEM</p>
+
+          {/* Typewriter Effect */}
+          <div style={{ height: 40, marginTop: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <p style={{ ...s.brandTitle, fontSize: 18, letterSpacing: '0.05em', fontWeight: 600 }}>
+              <Typewriter text={currentSlide.text} speed={60} />
+            </p>
+          </div>
 
           <div style={s.leftFooter}>
             <span style={s.leftFooterDot} />
@@ -86,7 +142,7 @@ export default function LoginPage() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@skyopticles.com"
+                placeholder="admin@dmdoptics.com"
                 autoCapitalize="none"
                 autoCorrect="off"
                 autoComplete="username"
@@ -120,7 +176,7 @@ export default function LoginPage() {
           </form>
 
           <p style={s.footnote}>
-            This console is for SKY OPTICLES administrators only. Customer
+            This console is for DMD dministrators only. Customer
             accounts live in the mobile application and cannot be used here.
           </p>
         </div>

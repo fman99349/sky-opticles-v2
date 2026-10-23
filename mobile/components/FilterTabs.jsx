@@ -2,38 +2,65 @@ import React from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { styles } from '../styles';
 
-export default function FilterTabs({ tabs, activeId, onChange }) {
+export default function FilterTabs({ 
+  parentTabs, 
+  childTabs, 
+  activeParentId, 
+  activeChildId, 
+  onParentChange, 
+  onChildChange 
+}) {
   return (
-    <View style={styles.filterBar}>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.filterContent}
-      >
-        {tabs.map((tab) => {
-          const active = tab.id === activeId;
-          return (
-            <Pressable
-              key={tab.id}
-              onPress={() => onChange(tab.id)}
-              style={({ pressed }) => [
-                styles.filterTab,
-                active && styles.filterTabActive,
-                pressed && styles.buttonPressed,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.filterTabText,
-                  active && styles.filterTabTextActive,
+    <View>
+      {/* PARENT TABS (Larger) */}
+      <View style={styles.filterBar}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterContent}>
+          {parentTabs.map((tab) => {
+            const active = tab.id === activeParentId;
+            return (
+              <Pressable
+                key={tab.id}
+                onPress={() => onParentChange(tab.id)}
+                style={({ pressed }) => [
+                  styles.filterTab, // Default size
+                  active && styles.filterTabActive,
+                  pressed && styles.buttonPressed,
                 ]}
               >
-                {tab.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+                <Text style={[styles.filterTabText, active && styles.filterTabTextActive]}>
+                  {tab.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      {/* CHILD TABS (Smaller) */}
+      {childTabs && childTabs.length > 1 && (
+        <View style={styles.subFilterBar}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterContent}>
+            {childTabs.map((tab) => {
+              const active = tab.id === activeChildId;
+              return (
+                <Pressable
+                  key={tab.id}
+                  onPress={() => onChildChange(tab.id)}
+                  style={({ pressed }) => [
+                    styles.subFilterTab,
+                    active && styles.subFilterTabActive,
+                    pressed && styles.buttonPressed,
+                  ]}
+                >
+                  <Text style={[styles.subFilterTabText, active && styles.subFilterTabTextActive]}>
+                    {tab.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
     </View>
   );
 }

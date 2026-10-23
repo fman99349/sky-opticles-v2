@@ -63,6 +63,12 @@ export default function Images() {
   const maskInputRef = useRef(null);
   const pendingMaskImageIdRef = useRef(null);
 
+  // --- 3D Models state ---
+  const [models3D, setModels3D] = useState([]);
+  const [loading3D, setLoading3D] = useState(false);
+  const [uploading3D, setUploading3D] = useState(false);
+  const modelInputRef = useRef(null);
+
   // --- Load products once ---
   useEffect(() => {
     let cancelled = false;
@@ -113,10 +119,25 @@ export default function Images() {
       setVariants([]);
     }
   };
-
+  const load3DModels = async (pid) => {
+    if (!pid) {
+      setModels3D([]);
+      return;
+    }
+    setLoading3D(true);
+    try {
+      const result = await api.list3DModels(pid);
+      setModels3D(result.data || []);
+    } catch {
+      setModels3D([]);
+    } finally {
+      setLoading3D(false);
+    }
+  };
   useEffect(() => {
     loadImages(productId);
     loadVariants(productId);
+    load3DModels(productId);
   }, [productId]);
 
   const showToast = (msg) => {
@@ -186,7 +207,46 @@ export default function Images() {
       setUploadingMaskFor(null);
     }
   };
+  // --- 3D Model handlers ---
+  const trigger3DFilePicker = () => {
+    if (!productId) {
+      setError('Select a product first.');
+      return;
+    }
+    if (modelInputRef.current) modelInputRef.current.click();
+  };
 
+  const onModelFilePicked = async (event) => {
+    const file = event.target.files && event.target.files[0];
+    if (event.target) event.target.value = '';
+    if (!file) return;
+
+    setUploading3D(true);
+    setError('');
+    try {
+      await api.upload3DModel(productId, file, {
+        isPrimary: models3D.length === 0,
+      });
+      showToast(`Uploaded 3D model "${file.name}".`);
+      await load3DModels(productId);
+    } catch (e) {
+      setError(e.message || '3D model upload failed.');
+    } finally {
+      setUploading3D(false);
+    }
+  };
+
+  const remove3DModel = async (modelId) => {
+    if (!window.confirm('Delete this 3D model? This cannot be undone.')) return;
+    setError('');
+    try {
+      await api.delete3DModel(modelId);
+      showToast('3D model deleted.');
+      await load3DModels(productId);
+    } catch (e) {
+      setError(e.message || 'Could not delete 3D model.');
+    }
+  };
   const clearMask = async (imageId) => {
     if (!window.confirm('Remove the lens mask from this image?')) return;
     setError('');
@@ -571,6 +631,148 @@ export default function Images() {
             {savingUrl ? 'Adding…' : 'Add by URL'}
           </button>
         </form>
+      )}
+      {/* 3D Models section */}
+      {productId && (
+        <div
+          style={{
+            marginTop: 28,
+            paddingTop: 20,
+            borderTop: '1px solid #E7E3DC',
+          }}
+        >
+          <div
+            className="erp-page-head"
+            style={{ paddingBottom: 12 }}
+          >
+            <div>
+              <h2
+                className="erp-page-title"
+                style={{ fontSize: 16 }}
+              >
+                3D Models
+              </h2>
+              <p className="muted small">
+                Upload a .glb or .gltf file. Customers tap the product image to open the 3D viewer.
+              </p>
+            </div>
+            <div className="erp-page-actions">
+              <button
+                className="primary"
+                onClick={trigger3DFilePicker}
+                disabled={uploading3D}
+                type="button"
+              >
+                <Upload size={16} />
+                <span>{uploading3D ? 'Uploading…' : 'Upload 3D Model'}</span>
+              </button>
+              <button
+  className="ghost"
+  onClick={async () => {
+    if (!productId) return setError('Select a product first.');
+    setError('');
+    showToast('Generating 3D model… this may take a minute.');
+    try {
+      const res = await fetch(
+        `${api.baseUrl}/products/${productId}/generate-3d-model`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(window.localStorage.getItem('sky_opticles_admin_token')
+              ? {
+                  Authorization: `Bearer ${window.localStorage.getItem('sky_opticles_admin_token')}`,
+                }
+              : {}),
+          },
+        }
+      );
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Generation failed.');
+      }
+      showToast('3D model generated successfully.');
+      await load3DModels(productId);
+    } catch (e) {
+      setError(e.message || 'Could not generate 3D model.');
+    }
+  }}
+  disabled={uploading3D}
+  type="button"
+>
+  <RefreshCw size={16} />
+  <span>Generate 3D (AI)</span>
+</button>
+            </div>
+          </div>
+
+          {loading3D ? (
+            <div className="erp-table-wrap">
+              <div className="erp-empty">
+                <p className="muted">Loading 3D models…</p>
+              </div>
+            </div>
+          ) : models3D.length === 0 ? (
+            <div className="erp-table-wrap">
+              <div className="erp-empty">
+                <p className="muted small">
+                  No 3D models yet for this product. Upload a .glb file to enable the 3D viewer.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="erp-image-grid">
+              {models3D.map((m) => {
+                const assignedVariant = m.variant_id
+                  ? variants.find((v) => String(v.id) === String(m.variant_id))
+                  : null;
+                return (
+                  <div key={m.id} className="erp-image-tile" style={{ padding: 14 }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: 10,
+                      }}
+                    >
+                      <strong style={{ fontSize: 12, letterSpacing: '0.05em' }}>
+                        #{m.id} · {String(m.format || 'glb').toUpperCase()}
+                      </strong>
+                      {m.is_primary && (
+                        <span className="erp-image-primary-badge">PRIMARY</span>
+                      )}
+                    </div>
+                    <div className="muted small" style={{ marginBottom: 4 }}>
+                      {assignedVariant
+                        ? variantLabel(assignedVariant)
+                        : '(Product-wide)'}
+                    </div>
+                    <div className="muted small" style={{ marginBottom: 14 }}>
+                      {humanBytes(Number(m.file_size_bytes)) || '—'}
+                    </div>
+                    <button
+                      type="button"
+                      className="danger"
+                      onClick={() => remove3DModel(m.id)}
+                    >
+                      <Trash2 size={12} style={{ marginRight: 4, verticalAlign: '-1px' }} />
+                      Delete
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <input
+            ref={modelInputRef}
+            type="file"
+            accept=".glb,.gltf,model/gltf-binary,model/gltf+json"
+            onChange={onModelFilePicked}
+            style={{ display: 'none' }}
+          />
+        </div>
       )}
 
       {toast && <div className="erp-toast">{toast}</div>}

@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const pool = require('../db');
 const { sendExpoPush } = require('../utils/expoPush');
+const crypto = require('crypto');
 
 const router = express.Router();
 
@@ -345,7 +346,89 @@ router.patch('/auth/push-token', async (req, res) => {
 
 
 
+// POST /api/auth/forgot-password
+router.post('/auth/forgot-password', async (req, res) => {
+  const { email } = req.body || {};
+  if (!isValidEmail(email)) {
+    return res.status(400).json({ error: 'Valid email is required.' });
+  }
 
+  try {
+    const userRes = await pool.query('SELECT id, email FROM users WHERE LOWER(email) = $1', [email.trim().toLowerCase()]);
+    
+    // Security: Always return success even if the email doesn't exist to prevent email harvesting
+    if (userRes.rows.length === 0) {
+      return res.json({ success: true, message: 'If that email exists, a reset code has been sent.' });
+    }
+
+    const user = userRes.rows[0];
+    
+    // Generate a 6-character uppercase alphanumeric code
+    const token = crypto.randomBytes(3).toString('hex').toUpperCase();
+    
+    // Expire in 15 minutes
+    const expiresAt = new Date(Date.now() + 15 * 60000);
+
+    // Save to database
+    await pool.query('DELETE FROM password_reset_tokens WHERE user_id = $1', [user.id]); // Clear old ones
+    await pool.query(
+      'INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)',
+      [user.id, token, expiresAt]
+    );
+
+    // FOR NOW: Print the code to the backend terminal instead of sending an email
+    console.log('\n=============================================');
+    console.log(`🔐 PASSWORD RESET CODE for ${user.email}`);
+    console.log(`👉 CODE: ${token}`);
+    console.log('=============================================\n');
+
+    res.json({ success: true, message: 'If that email exists, a reset code has been sent.' });
+  } catch (error) {
+    handleError(res, error, 'Forgot password failed');
+  }
+});
+
+// POST /api/auth/reset-password
+router.post('/auth/reset-password', async (req, res) => {
+  const { email, token, newPassword } = req.body || {};
+
+  if (!isValidEmail(email) || !token || typeof newPassword !== 'string') {
+    return res.status(400).json({ error: 'Email, reset code, and new password are required.' });
+  }
+
+  if (newPassword.length < PASSWORD_MIN || newPassword.length > PASSWORD_MAX) {
+    return res.status(400).json({ error: `Password must be between ${PASSWORD_MIN} and ${PASSWORD_MAX} characters.` });
+  }
+
+  try {
+    const userRes = await pool.query('SELECT id FROM users WHERE LOWER(email) = $1', [email.trim().toLowerCase()]);
+    if (userRes.rows.length === 0) {
+      return res.status(400).json({ error: 'Invalid or expired reset code.' });
+    }
+    const userId = userRes.rows[0].id;
+
+    const tokenRes = await pool.query(
+      `SELECT id FROM password_reset_tokens 
+       WHERE user_id = $1 AND token = $2 AND expires_at > NOW()`,
+      [userId, token.trim().toUpperCase()]
+    );
+
+    if (tokenRes.rows.length === 0) {
+      return res.status(400).json({ error: 'Invalid or expired reset code.' });
+    }
+
+    // Hash the new password
+    const passwordHash = await bcrypt.hash(newPassword, BCRYPT_COST);
+
+    // Update user password and delete the used token
+    await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [passwordHash, userId]);
+    await pool.query('DELETE FROM password_reset_tokens WHERE user_id = $1', [userId]);
+
+    res.json({ success: true, message: 'Password updated successfully.' });
+  } catch (error) {
+    handleError(res, error, 'Reset password failed');
+  }
+});
 
 
 

@@ -9,12 +9,12 @@ import {
 } from 'lucide-react';
 import { api } from '../api/client.js';
 
-const EMPTY_FORM = { name: '', description: '' };
+const EMPTY_FORM = { name: '', description: '', parentId: '' };
 
 // ---------------------------------------------------------------------------
 // Dual-purpose modal — Create or Edit.
 // ---------------------------------------------------------------------------
-function CategoryModal({ mode, initialCategory, onClose, onSaved }) {
+function CategoryModal({ mode, initialCategory, allCategories, onClose, onSaved }) {
   const isEdit = mode === 'edit';
 
   const [form, setForm] = useState(() =>
@@ -22,6 +22,7 @@ function CategoryModal({ mode, initialCategory, onClose, onSaved }) {
       ? {
           name: initialCategory.name || '',
           description: initialCategory.description || '',
+          parentId: initialCategory.parent_id ? String(initialCategory.parent_id) : '',
         }
       : EMPTY_FORM
   );
@@ -47,6 +48,7 @@ function CategoryModal({ mode, initialCategory, onClose, onSaved }) {
       const body = {
         name: form.name.trim(),
         description: form.description.trim() || null,
+        parentId: form.parentId ? Number(form.parentId) : null,
       };
 
       if (isEdit) {
@@ -105,6 +107,26 @@ function CategoryModal({ mode, initialCategory, onClose, onSaved }) {
           </label>
 
           <label>
+            Parent Category (Optional)
+            <select
+              value={form.parentId}
+              onChange={(e) => update('parentId', e.target.value)}
+            >
+              <option value="">None (Top Level Tab)</option>
+              {allCategories
+                // Prevent selecting itself as a parent
+                .filter((c) => !isEdit || c.id !== initialCategory.id)
+                // Only allow 2 levels deep (Parent -> Child)
+                .filter((c) => !c.parent_id)
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+
+          <label>
             Description (optional)
             <textarea
               rows={3}
@@ -117,8 +139,8 @@ function CategoryModal({ mode, initialCategory, onClose, onSaved }) {
           {error && <p className="status-error">{error}</p>}
 
           <p className="muted small">
-            The backend generates the slug automatically. If the category is
-            used by any product, you cannot delete it — deactivate it instead.
+            If you select a Parent Category, this category will become a sub-tab
+            inside the parent on the mobile app.
           </p>
 
           <div className="modal-actions">
@@ -220,6 +242,13 @@ export default function Categories() {
     }
   };
 
+  // Helper to get parent name for the table
+  const getParentName = (parentId) => {
+    if (!parentId) return null;
+    const parent = categories.find((c) => c.id === parentId);
+    return parent ? parent.name : 'Unknown';
+  };
+
   return (
     <div className="erp-page">
       <div className="erp-page-head">
@@ -275,8 +304,8 @@ export default function Categories() {
               <tr>
                 <th style={{ width: 70 }}>ID</th>
                 <th>Name</th>
+                <th>Parent Category</th>
                 <th>Slug</th>
-                <th>Description</th>
                 <th style={{ textAlign: 'center' }}>Status</th>
                 <th style={{ textAlign: 'center', width: 90 }}>Actions</th>
               </tr>
@@ -286,18 +315,19 @@ export default function Categories() {
                 <tr key={c.id}>
                   <td className="erp-cell-muted">#{c.id}</td>
                   <td>
-                    <div className="erp-cell-strong">{c.name}</div>
+                    <div className="erp-cell-strong">
+                      {c.parent_id ? '↳ ' : ''}
+                      {c.name}
+                    </div>
                   </td>
-                  <td className="erp-cell-muted">{c.slug}</td>
                   <td>
-                    {c.description ? (
-                      <div className="erp-cell-sub" title={c.description}>
-                        {c.description}
-                      </div>
+                    {c.parent_id ? (
+                      <span className="badge badge-active">{getParentName(c.parent_id)}</span>
                     ) : (
-                      <span className="muted">—</span>
+                      <span className="muted">Top Level</span>
                     )}
                   </td>
+                  <td className="erp-cell-muted">{c.slug}</td>
                   <td style={{ textAlign: 'center' }}>
                     <span
                       className={`badge badge-${c.is_active ? 'active' : 'archived'}`}
@@ -338,6 +368,7 @@ export default function Categories() {
         <CategoryModal
           mode={modalMode}
           initialCategory={editTarget}
+          allCategories={categories}
           onClose={() => setModalOpen(false)}
           onSaved={handleSaved}
         />

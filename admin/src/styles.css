@@ -1048,6 +1048,154 @@ textarea:focus-visible,
 
 
 
+/* =====================================================================
+   ADMIN BELL & DROPDOWN
+   ===================================================================== */
+
+.admin-bell-wrap {
+  position: relative;
+}
+
+.admin-bell-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  background: #C0392B;
+  color: white;
+  font-size: 10px;
+  font-weight: 900;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  border: 2px solid var(--white);
+}
+
+.admin-bell-dropdown {
+  position: absolute;
+  top: 46px;
+  right: 0;
+  width: 340px;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(16, 29, 44, 0.15);
+  z-index: 999;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-bell-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 900;
+  color: var(--ink);
+  background: #FAF7F1;
+}
+
+.admin-bell-clear {
+  background: transparent;
+  border: none;
+  color: var(--teal);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+}
+.admin-bell-clear:hover {
+  text-decoration: underline;
+}
+
+.admin-bell-list {
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.admin-bell-item {
+  padding: 14px 16px;
+  border-bottom: 1px solid #F0EBE3;
+  transition: background 0.1s;
+  position: relative;
+}
+.admin-bell-item:last-child {
+  border-bottom: none;
+}
+.admin-bell-item:hover {
+  background: #FDFCFA;
+}
+
+.admin-bell-item.unread {
+  background: #F1F9F8;
+}
+
+.admin-bell-item.unread::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 20px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--teal);
+}
+
+.admin-bell-item-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+
+.admin-bell-item-msg {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+  margin-bottom: 6px;
+}
+
+.admin-bell-item-time {
+  font-size: 10px;
+  color: #A3AEBE;
+  font-weight: 600;
+}
+
+.admin-bell-empty {
+  padding: 40px 20px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

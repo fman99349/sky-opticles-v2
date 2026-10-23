@@ -212,6 +212,7 @@ function validateCustomerContact(customer) {
 // ---------------------------------------------------------------------------
 router.post('/orders', requireCustomer, async (req, res) => {
   const body = req.body || {};
+    const currency = body.currency || 'ZAR';
 
   const shippingCheck = validateShipping(body.shipping);
   if (!shippingCheck.ok) {
@@ -236,6 +237,17 @@ router.post('/orders', requireCustomer, async (req, res) => {
 
     // 1. Load lens prices once.
     const priceIndex = await loadLensPriceIndex(client);
+    
+    // 1.5 Get exchange rate for the requested currency
+    let exchangeRate = 1;
+    if (currency !== 'ZAR') {
+      const rateRes = await client.query('SELECT rate_to_base FROM exchange_rates WHERE currency_code = $1', [currency]);
+      if (rateRes.rows.length > 0) exchangeRate = Number(rateRes.rows[0].rate_to_base);
+    }
+
+
+
+
 
     // 2. Validate each item shape up front (before hitting the DB for products)
     const normalizedItems = [];
@@ -307,6 +319,7 @@ router.post('/orders', requireCustomer, async (req, res) => {
     // 5. Compute per-item pricing and gather prescription ownership checks.
     const preparedItems = [];
     let subtotal = 0;
+    let baseSubtotal = 0;
     const prescriptionIdsToVerify = [];
 
     for (const item of normalizedItems) {
@@ -338,19 +351,26 @@ router.post('/orders', requireCustomer, async (req, res) => {
         }
       }
 
-      // Base price: variant override if present, otherwise product price.
-      const basePrice =
+      // Base price in ZAR
+      const basePriceZar =
         variant && variant.price_override !== null
           ? Number(variant.price_override)
           : Number(product.price);
 
-      const lensDelta = computeLensDelta(
+      const lensDeltaZar = computeLensDelta(
         product.product_type,
         item.config,
         priceIndex
       );
-      const unitPrice = basePrice + lensDelta;
-      const lineTotal = unitPrice * item.quantity;
+
+      // Convert to requested currency
+      const basePrice = Number((basePriceZar * exchangeRate).toFixed(2));
+      const lensDelta = Number((lensDeltaZar * exchangeRate).toFixed(2));
+      const unitPrice = Number((basePrice + lensDelta).toFixed(2));
+      const lineTotal = Number((unitPrice * item.quantity).toFixed(2));
+      
+      // Keep track of ZAR total for accounting
+      baseSubtotal += Number(((basePriceZar + lensDeltaZar) * item.quantity).toFixed(2));
 
       // Prescription ownership — if the config includes an uploadId,
       // capture it and verify it belongs to this customer.
@@ -404,9 +424,29 @@ router.post('/orders', requireCustomer, async (req, res) => {
     const seq = await client.query("SELECT nextval('orders_number_seq') AS v");
     const orderNumber = formatOrderNumber(seq.rows[0].v);
 
+      // 7.5 Calculate Estimated Delivery Date
+    // Standard items take 3 days. Eyewear/lenses take 7 days (lab work).
+    let processingDays = 3;
+    const requiresLab = preparedItems.some((item) => {
+      const p = productMap.get(item.product_id);
+      const isEyewear = p && ['optical_frame', 'sunglasses', 'lenses', 'contact_lenses'].includes(p.product_type);
+      const hasLenses = item.lens_config && item.lens_config.lensType && item.lens_config.lensType !== 'plano';
+      return isEyewear || hasLenses;
+    });
+
+    if (requiresLab) processingDays = 7;
+
+    const deliveryDate = new Date();
+    deliveryDate.setDate(deliveryDate.getDate() + processingDays);
+
+
+
+
+
     // 8. Insert order.
     const shippingCost = 0;
-    const total = subtotal + shippingCost;
+    const total = Number((subtotal + shippingCost).toFixed(2));
+    const baseTotal = Number((baseSubtotal + (shippingCost / exchangeRate)).toFixed(2));
 
     const orderInsert = await client.query(
       `INSERT INTO orders (
@@ -414,13 +454,15 @@ router.post('/orders', requireCustomer, async (req, res) => {
         customer_name, customer_email, customer_phone,
         shipping_line1, shipping_line2, shipping_city,
         shipping_postal_code, shipping_province, shipping_country,
-        subtotal, shipping_cost, total
+        subtotal, shipping_cost, total,
+        currency, exchange_rate, base_total, estimated_delivery_date
        ) VALUES (
         $1, $2,
         $3, $4, $5,
         $6, $7, $8,
         $9, $10, $11,
-        $12, $13, $14
+        $12, $13, $14,
+        $15, $16, $17, $18
        )
        RETURNING *`,
       [
@@ -438,6 +480,10 @@ router.post('/orders', requireCustomer, async (req, res) => {
         subtotal,
         shippingCost,
         total,
+        currency,
+        exchangeRate,
+        baseTotal,
+        deliveryDate,
       ]
     );
 
@@ -566,6 +612,7 @@ router.post('/orders', requireCustomer, async (req, res) => {
         payment_status: order.payment_status,
         fulfillment_status: order.fulfillment_status,
         archived: order.archived,
+        estimated_delivery_date: order.estimated_delivery_date, // <--- ADDED
         created_at: order.created_at,
         items: itemsResult.rows,
       },
@@ -616,7 +663,7 @@ router.get('/orders/:id', requireCustomer, async (req, res) => {
               shipping_postal_code, shipping_province, shipping_country,
               subtotal, shipping_cost, total,
               payment_status, fulfillment_status, archived,
-              paid_at, created_at, updated_at
+              paid_at, estimated_delivery_date, created_at, updated_at
        FROM orders
        WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
       [id, req.customer.id]
@@ -663,6 +710,7 @@ router.get('/orders/:id', requireCustomer, async (req, res) => {
         fulfillment_status: order.fulfillment_status,
         archived: order.archived,
         paid_at: order.paid_at,
+        estimated_delivery_date: order.estimated_delivery_date, // <--- ADDED
         created_at: order.created_at,
         updated_at: order.updated_at,
         items: itemsResult.rows,

@@ -16,6 +16,8 @@ const productTypeRoutes = require('./routes/productTypes');
 const addressRoutes = require('./routes/addresses');
 const adminOrderRoutes = require('./routes/adminOrders');
 const notificationRoutes = require('./routes/notifications');
+const adminLensOptionsRoutes = require('./routes/adminLensOptions');
+const adminStatsRoutes = require('./routes/adminStats');
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -34,7 +36,9 @@ app.use('/api', adminOrderRoutes);
 app.use('/api', productTypeRoutes);
 app.use('/api', addressRoutes);
 app.use('/api', notificationRoutes);
-
+app.use('/api', adminLensOptionsRoutes);
+app.use('/api', adminStatsRoutes);
+app.use('/api', require('./routes/product3d'));
 
 
 // Serve product image uploads publicly. Prescriptions live under the same
@@ -46,7 +50,7 @@ app.use(
 );
 
 
-
+app.use('/uploads/models', express.static(require('path').join(__dirname, '..', 'uploads', 'models')));
 
 
 

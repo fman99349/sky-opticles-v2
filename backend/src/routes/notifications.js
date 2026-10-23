@@ -106,4 +106,37 @@ router.patch('/admin/notifications/:id/read', requireAdmin, async (req, res) => 
   }
 });
 
+
+
+// DELETE /api/notifications/:id
+router.delete('/notifications/:id', requireCustomer, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'DELETE FROM notifications WHERE id = $1 AND customer_id = $2 RETURNING id',
+      [req.params.id, req.userId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Not found.' });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete notification.' });
+  }
+});
+
+// DELETE /api/notifications (Clear all)
+router.delete('/notifications', requireCustomer, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM notifications WHERE customer_id = $1', [req.userId]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to clear notifications.' });
+  }
+});
+
+
+
+
+
+
+
+
 module.exports = router;

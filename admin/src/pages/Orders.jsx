@@ -19,10 +19,16 @@ const FULFILLMENT_OPTIONS = [
   'cancelled',
 ];
 
-function formatZar(value) {
+function formatCurrency(value, currency = 'ZAR') {
   const n = Number(value);
-  if (!Number.isFinite(n)) return 'R —';
-  return `R ${n.toLocaleString('en-ZA', {
+  if (!Number.isFinite(n)) return '—';
+
+  let symbol = 'R';
+  if (currency === 'USD') symbol = '$';
+  if (currency === 'GBP') symbol = '£';
+  if (currency === 'EUR') symbol = '€';
+
+  return `${symbol} ${n.toLocaleString('en-ZA', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
@@ -44,6 +50,12 @@ function formatDate(iso) {
   }
 }
 
+
+function formatDateForInput(isoString) {
+  if (!isoString) return '';
+  const d = new Date(isoString);
+  return d.toISOString().split('T')[0]; // Returns YYYY-MM-DD
+}
 // ---------------------------------------------------------------------------
 // Lens specification helpers
 // ---------------------------------------------------------------------------
@@ -109,8 +121,6 @@ function isPrescriptionTyped(rx) {
 
 // ---------------------------------------------------------------------------
 // SpecsPanel — the "view specifications" body for one order item.
-// Shows every lens choice the customer made, plus typed Rx values if any.
-// Does NOT show per-group prices — only labels.
 // ---------------------------------------------------------------------------
 function SpecsPanel({ item, lensGroups }) {
   const cfg = item.lens_config || {};
@@ -136,13 +146,11 @@ function SpecsPanel({ item, lensGroups }) {
     });
   }
 
-  // --- ADD THIS BLOCK ---
   // If the item has variant_attributes (like a laptop), list them here.
   const variantAttrs = item.variant_attributes || {};
   for (const [k, v] of Object.entries(variantAttrs)) {
     rows.push({ label: k, value: String(v) });
   }
-  // ----------------------
 
   const typedRx = isPrescriptionTyped(cfg.prescription);
   const hasUpload = !!item.prescription_id;
@@ -218,6 +226,7 @@ function OrderModal({ orderId, onClose, onChanged, lensGroups }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
+    const [deliveryDate, setDeliveryDate] = useState('');
 
   const openPrescription = async (prescriptionId) => {
     try {
@@ -239,6 +248,9 @@ function OrderModal({ orderId, onClose, onChanged, lensGroups }) {
     try {
       const result = await api.getOrder(orderId);
       setOrder(result.data);
+      if (result.data.estimated_delivery_date) {
+        setDeliveryDate(formatDateForInput(result.data.estimated_delivery_date));
+      }
     } catch (e) {
       setError(e.message || 'Failed to load order.');
     } finally {
@@ -276,6 +288,27 @@ function OrderModal({ orderId, onClose, onChanged, lensGroups }) {
       setBusy('');
     }
   };
+  const saveDeliveryDate = async () => {
+    setBusy('delivery');
+    try {
+      // Set time to end of day so the customer sees the full day
+      const isoDate = new Date(`${deliveryDate}T23:59:59`).toISOString();
+      await api.updateOrder(orderId, { estimated_delivery_date: isoDate });
+      await load();
+      onChanged();
+      window.alert('Delivery date updated.');
+    } catch (e) {
+      setError(e.message || 'Could not update delivery date.');
+    } finally {
+      setBusy('');
+    }
+  };
+
+
+
+
+
+
 
   const markPaid = async () => {
     const ok = window.confirm(
@@ -405,6 +438,50 @@ function OrderModal({ orderId, onClose, onChanged, lensGroups }) {
               </div>
             </div>
 
+                       {/* Delivery Date */}
+            <div className="order-detail-section">
+              <h4>Estimated Delivery</h4>
+              <div style={{ 
+                display: 'flex', 
+                gap: 10, 
+                alignItems: 'center', 
+                background: '#FAF7F1', 
+                padding: 14, 
+                borderRadius: 6, 
+                border: '1px solid var(--border)' 
+              }}>
+                <input
+                  type="date"
+                  value={deliveryDate}
+                  onChange={(e) => setDeliveryDate(e.target.value)}
+                  style={{ 
+                    padding: '8px 12px', 
+                    borderRadius: 4, 
+                    border: '1px solid var(--border)', 
+                    background: '#FFF', 
+                    color: 'var(--ink)',
+                    fontSize: 13,
+                    fontWeight: 600
+                  }}
+                />
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={saveDeliveryDate}
+                  disabled={busy !== '' || !deliveryDate}
+                >
+                  {busy === 'delivery' ? 'Saving…' : 'Update Date'}
+                </button>
+              </div>
+            </div>
+
+
+
+
+
+
+
+
             {/* Items */}
             <div className="order-detail-section">
               <h4>Items</h4>
@@ -425,9 +502,9 @@ function OrderModal({ orderId, onClose, onChanged, lensGroups }) {
                               SKU <code>{it.variant_sku}</code> ·{' '}
                             </>
                           )}
-                          Base {formatZar(it.base_price)}
+                          Base {formatCurrency(it.base_price, order.currency)}
                           {Number(it.lens_delta) > 0 && (
-                            <> + lenses {formatZar(it.lens_delta)}</>
+                            <> + lenses {formatCurrency(it.lens_delta, order.currency)}</>
                           )}
                           {it.prescription_id && (
                             <>
@@ -481,7 +558,7 @@ function OrderModal({ orderId, onClose, onChanged, lensGroups }) {
                         × {it.quantity}
                       </div>
                       <div className="order-item-total">
-                        {formatZar(it.line_total)}
+                        {formatCurrency(it.line_total, order.currency)}
                       </div>
                     </div>
                     {openSpecs[it.id] && (
@@ -494,20 +571,28 @@ function OrderModal({ orderId, onClose, onChanged, lensGroups }) {
               <div className="order-summary">
                 <div className="order-summary-row">
                   <span>Subtotal</span>
-                  <span>{formatZar(order.subtotal)}</span>
+                  <span>{formatCurrency(order.subtotal, order.currency)}</span>
                 </div>
                 <div className="order-summary-row">
                   <span>Shipping</span>
                   <span>
                     {Number(order.shipping_cost) > 0
-                      ? formatZar(order.shipping_cost)
+                      ? formatCurrency(order.shipping_cost, order.currency)
                       : 'Free'}
                   </span>
                 </div>
                 <div className="order-summary-row total">
                   <span>Total</span>
-                  <span>{formatZar(order.total)}</span>
+                  <span>{formatCurrency(order.total, order.currency)}</span>
                 </div>
+                
+                {/* Show ZAR equivalent if the order was paid in another currency */}
+                {order.currency !== 'ZAR' && (
+                  <div className="order-summary-row" style={{ marginTop: 10, color: 'var(--teal)', fontSize: 11, borderTop: '1px dashed var(--border)', paddingTop: 10 }}>
+                    <span>ZAR Base Total (Accounting)</span>
+                    <span>{formatCurrency(order.base_total, 'ZAR')}</span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -690,6 +775,21 @@ export default function Orders() {
     setFilters((f) => ({ ...f, [field]: value }));
   };
 
+  const handleDeleteOrder = async (order) => {
+    const ok = window.confirm(
+      `Delete order ${order.order_number}? This hides it from the list (soft delete).`
+    );
+    if (!ok) return;
+
+    try {
+      await api.deleteOrder(order.id);
+      showToast(`Deleted ${order.order_number}.`);
+      load();
+    } catch (e) {
+      setListError(e.message || 'Could not delete order.');
+    }
+  };
+
   return (
     <div className="erp-page">
       <div className="erp-page-head">
@@ -821,7 +921,7 @@ export default function Orders() {
                   <td style={{ textAlign: 'center' }}>
                     {o.item_count ?? '—'}
                   </td>
-                  <td className="erp-cell-price">{formatZar(o.total)}</td>
+                  <td className="erp-cell-price">{formatCurrency(o.total, o.currency)}</td>
                   <td style={{ textAlign: 'center' }}>
                     <Pill kind="pay" value={o.payment_status} />
                   </td>
@@ -841,6 +941,15 @@ export default function Orders() {
                         aria-label={`View ${o.order_number}`}
                       >
                         <Eye size={13} />
+                      </button>
+                      <button
+                        type="button"
+                        className="erp-row-action danger"
+                        onClick={() => handleDeleteOrder(o)}
+                        title="Delete order"
+                        aria-label={`Delete ${o.order_number}`}
+                      >
+                        <Trash2 size={13} />
                       </button>
                     </div>
                   </td>
