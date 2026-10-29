@@ -20,13 +20,13 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const pool = require('../db');
 const { sendExpoPush } = require('../utils/expoPush');
+const { sendEmail } = require('../utils/email');
+const { orderConfirmationEmail } = require('../utils/emailTemplates');
 
 const router = express.Router();
 
 // ---------------------------------------------------------------------------
-// Auth middleware — customer only. Duplicated from prescriptions.js so this
-// file is self-contained. Extract to a shared module when a third copy
-// appears.
+// Auth middleware — customer only.
 // ---------------------------------------------------------------------------
 async function requireCustomer(req, res, next) {
   const header = req.headers.authorization || '';
@@ -73,8 +73,6 @@ async function requireCustomer(req, res, next) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-// Load all lens option prices as a Map<group_key, Map<option_key, price_delta>>.
-// Called once per order request — tiny data, single query.
 async function loadLensPriceIndex(client) {
   const result = await client.query(
     `SELECT g.group_key, o.option_key, o.price_delta
@@ -90,12 +88,6 @@ async function loadLensPriceIndex(client) {
   return index;
 }
 
-// Compute the lens delta for a config against the DB price index.
-// Only counts groups that apply to the product type AND are present in the
-// config. Unknown or missing keys are ignored, not rejected — the schema
-// is additive over time, and an old config should not fail.
-//
-// If the customer chose frameOnly, delta is 0 regardless of other fields.
 function computeLensDelta(productType, config, index) {
   if (!config || typeof config !== 'object') return 0;
   if (config.frameOnly === true) return 0;
@@ -110,9 +102,6 @@ function computeLensDelta(productType, config, index) {
   return delta;
 }
 
-// Return the group keys that apply to a product type. The order handler
-// does not currently use this, but the admin view and mobile wizard will
-// benefit from having it here for future sharing.
 async function groupsForProductType(client, productType) {
   const result = await client.query(
     `SELECT group_key
@@ -123,7 +112,6 @@ async function groupsForProductType(client, productType) {
   return result.rows.map((r) => r.group_key);
 }
 
-// Format "SO-YYYY-NNNNN" from the current year and a sequence value.
 function formatOrderNumber(seqValue) {
   const year = new Date().getFullYear();
   const padded = String(seqValue).padStart(5, '0');
@@ -138,7 +126,6 @@ function nonEmptyString(value, max) {
   return typeof value === 'string' && value.trim().length > 0 && value.trim().length <= max;
 }
 
-// Validate the shipping payload. Returns { ok, error } or { ok, data }.
 function validateShipping(shipping) {
   if (!shipping || typeof shipping !== 'object') {
     return { ok: false, error: 'shipping is required.' };
@@ -184,7 +171,6 @@ function validateShipping(shipping) {
   };
 }
 
-// Validate the customer contact payload.
 function validateCustomerContact(customer) {
   if (!customer || typeof customer !== 'object') {
     return { ok: false, error: 'customer is required.' };
@@ -212,7 +198,7 @@ function validateCustomerContact(customer) {
 // ---------------------------------------------------------------------------
 router.post('/orders', requireCustomer, async (req, res) => {
   const body = req.body || {};
-    const currency = body.currency || 'ZAR';
+  const currency = body.currency || 'ZAR';
 
   const shippingCheck = validateShipping(body.shipping);
   if (!shippingCheck.ok) {
@@ -237,19 +223,15 @@ router.post('/orders', requireCustomer, async (req, res) => {
 
     // 1. Load lens prices once.
     const priceIndex = await loadLensPriceIndex(client);
-    
-    // 1.5 Get exchange rate for the requested currency
+
+    // 1.5 Exchange rate
     let exchangeRate = 1;
     if (currency !== 'ZAR') {
       const rateRes = await client.query('SELECT rate_to_base FROM exchange_rates WHERE currency_code = $1', [currency]);
       if (rateRes.rows.length > 0) exchangeRate = Number(rateRes.rows[0].rate_to_base);
     }
 
-
-
-
-
-    // 2. Validate each item shape up front (before hitting the DB for products)
+    // 2. Validate each item shape up front
     const normalizedItems = [];
     for (let i = 0; i < body.items.length; i++) {
       const item = body.items[i];
@@ -289,7 +271,7 @@ router.post('/orders', requireCustomer, async (req, res) => {
       });
     }
 
-    // 3. Load all referenced products in one query.
+    // 3. Load referenced products
     const productIds = [...new Set(normalizedItems.map((i) => i.productId))];
     const productsResult = await client.query(
       `SELECT id, name, slug, product_type, price, status
@@ -299,13 +281,13 @@ router.post('/orders', requireCustomer, async (req, res) => {
     );
     const productMap = new Map(productsResult.rows.map((p) => [Number(p.id), p]));
 
-    // 4. Load all referenced variants in one query.
+    // 4. Load referenced variants
     const variantIds = normalizedItems
       .map((i) => i.variantId)
       .filter((v) => v !== null);
     let variantMap = new Map();
     if (variantIds.length > 0) {
-            const variantsResult = await client.query(
+      const variantsResult = await client.query(
         `SELECT id, product_id, sku, price_override, attributes
          FROM product_variants
          WHERE id = ANY($1::bigint[])`,
@@ -316,7 +298,7 @@ router.post('/orders', requireCustomer, async (req, res) => {
       );
     }
 
-    // 5. Compute per-item pricing and gather prescription ownership checks.
+    // 5. Compute per-item pricing
     const preparedItems = [];
     let subtotal = 0;
     let baseSubtotal = 0;
@@ -351,7 +333,6 @@ router.post('/orders', requireCustomer, async (req, res) => {
         }
       }
 
-      // Base price in ZAR
       const basePriceZar =
         variant && variant.price_override !== null
           ? Number(variant.price_override)
@@ -363,17 +344,13 @@ router.post('/orders', requireCustomer, async (req, res) => {
         priceIndex
       );
 
-      // Convert to requested currency
       const basePrice = Number((basePriceZar * exchangeRate).toFixed(2));
       const lensDelta = Number((lensDeltaZar * exchangeRate).toFixed(2));
       const unitPrice = Number((basePrice + lensDelta).toFixed(2));
       const lineTotal = Number((unitPrice * item.quantity).toFixed(2));
-      
-      // Keep track of ZAR total for accounting
+
       baseSubtotal += Number(((basePriceZar + lensDeltaZar) * item.quantity).toFixed(2));
 
-      // Prescription ownership — if the config includes an uploadId,
-      // capture it and verify it belongs to this customer.
       let prescriptionId = null;
       const rx = item.config.prescription;
       if (rx && rx.uploadId) {
@@ -381,7 +358,7 @@ router.post('/orders', requireCustomer, async (req, res) => {
         prescriptionIdsToVerify.push(prescriptionId);
       }
 
-           preparedItems.push({
+      preparedItems.push({
         product_id: Number(product.id),
         variant_id: variant ? Number(variant.id) : null,
         prescription_id: prescriptionId,
@@ -401,7 +378,7 @@ router.post('/orders', requireCustomer, async (req, res) => {
       subtotal += lineTotal;
     }
 
-    // 6. Verify prescription ownership in one query.
+    // 6. Verify prescription ownership
     if (prescriptionIdsToVerify.length > 0) {
       const rxResult = await client.query(
         `SELECT id FROM prescriptions
@@ -420,12 +397,11 @@ router.post('/orders', requireCustomer, async (req, res) => {
       }
     }
 
-    // 7. Generate order number.
+    // 7. Order number
     const seq = await client.query("SELECT nextval('orders_number_seq') AS v");
     const orderNumber = formatOrderNumber(seq.rows[0].v);
 
-      // 7.5 Calculate Estimated Delivery Date
-    // Standard items take 3 days. Eyewear/lenses take 7 days (lab work).
+    // 7.5 Estimated delivery
     let processingDays = 3;
     const requiresLab = preparedItems.some((item) => {
       const p = productMap.get(item.product_id);
@@ -439,11 +415,7 @@ router.post('/orders', requireCustomer, async (req, res) => {
     const deliveryDate = new Date();
     deliveryDate.setDate(deliveryDate.getDate() + processingDays);
 
-
-
-
-
-    // 8. Insert order.
+    // 8. Insert order
     const shippingCost = 0;
     const total = Number((subtotal + shippingCost).toFixed(2));
     const baseTotal = Number((baseSubtotal + (shippingCost / exchangeRate)).toFixed(2));
@@ -489,9 +461,9 @@ router.post('/orders', requireCustomer, async (req, res) => {
 
     const order = orderInsert.rows[0];
 
-    // 9. Insert items.
+    // 9. Insert items + decrement stock
     for (const pi of preparedItems) {
-            await client.query(
+      await client.query(
         `INSERT INTO order_items (
           order_id, product_id, variant_id, prescription_id,
           product_name, product_slug, variant_sku, lens_config,
@@ -521,8 +493,6 @@ router.post('/orders', requireCustomer, async (req, res) => {
         ]
       );
 
-      // Decrement variant stock if applicable. Allow negative (backorder);
-      // the admin sees LOW badge once stock falls under reorder level.
       if (pi._variantToDecrement !== null) {
         await client.query(
           `UPDATE product_variants
@@ -536,7 +506,7 @@ router.post('/orders', requireCustomer, async (req, res) => {
     await client.query('COMMIT');
     tx = false;
 
-    // 10. Reload with items for the response.
+    // 10. Reload items for response + email
     const itemsResult = await pool.query(
       `SELECT id, product_id, variant_id, prescription_id,
               product_name, product_slug, variant_sku, lens_config,
@@ -548,23 +518,21 @@ router.post('/orders', requireCustomer, async (req, res) => {
       [order.id]
     );
 
-
-
     // --- NOTIFICATIONS ---
     const customerName = order.customer_name;
     const orderNum = order.order_number;
-    
-    // 1. Notify Customer
+
+    // In-app notification to customer
     await client.query(
       `INSERT INTO notifications (customer_id, title, message, type)
        VALUES ($1, $2, $3, 'order')`,
       [req.customer.id, 'Order Placed!', `Your order ${orderNum} has been received and is being processed.`]
     );
-    // Push notification to customer
+
+    // Push notification (fire-and-forget; push is best-effort)
     sendExpoPush(req.customer.expo_push_token, 'Order Placed', `We have received your order ${orderNum}.`);
 
-    // 2. Notify Admin
-    // Since we only have one admin for now, we'll hardcode the notification to admin_id = 1.
+    // In-app notification to platform admin
     await client.query(
       `INSERT INTO notifications (admin_id, title, message, type)
        VALUES ($1, $2, $3, 'order')`,
@@ -572,22 +540,32 @@ router.post('/orders', requireCustomer, async (req, res) => {
     );
     // ---------------------
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    // Order confirmation email — AWAITED. Fire-and-forget Nodemailer sends
+    // drop silently because the SMTP transaction gets reaped before it
+    // completes. Order is already committed at this point, so even if the
+    // email fails the customer sees their order on screen.
+    try {
+      const tpl = orderConfirmationEmail({
+        name: order.customer_name,
+        orderNumber: order.order_number,
+        total: order.total,
+        currency: order.currency,
+        items: itemsResult.rows,
+        estimatedDelivery: order.estimated_delivery_date,
+      });
+      const emailResult = await sendEmail({
+        to: order.customer_email,
+        subject: tpl.subject,
+        html: tpl.html,
+      });
+      if (!emailResult.ok) {
+        console.warn('[orders] Confirmation email failed:', emailResult.error);
+      } else {
+        console.log(`[orders] Confirmation email sent to ${order.customer_email} for ${order.order_number}`);
+      }
+    } catch (err) {
+      console.warn('[orders] Confirmation email error:', err.message);
+    }
 
     res.status(201).json({
       data: {
@@ -612,7 +590,7 @@ router.post('/orders', requireCustomer, async (req, res) => {
         payment_status: order.payment_status,
         fulfillment_status: order.fulfillment_status,
         archived: order.archived,
-        estimated_delivery_date: order.estimated_delivery_date, // <--- ADDED
+        estimated_delivery_date: order.estimated_delivery_date,
         created_at: order.created_at,
         items: itemsResult.rows,
       },
@@ -627,7 +605,7 @@ router.post('/orders', requireCustomer, async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// GET /api/orders — customer's own orders, newest first
+// GET /api/orders
 // ---------------------------------------------------------------------------
 router.get('/orders', requireCustomer, async (req, res) => {
   try {
@@ -648,7 +626,7 @@ router.get('/orders', requireCustomer, async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// GET /api/orders/:id — one order with items, only if it belongs to the user
+// GET /api/orders/:id
 // ---------------------------------------------------------------------------
 router.get('/orders/:id', requireCustomer, async (req, res) => {
   const id = Number(req.params.id);
@@ -676,7 +654,7 @@ router.get('/orders/:id', requireCustomer, async (req, res) => {
     const order = orderResult.rows[0];
 
     const itemsResult = await pool.query(
-            `SELECT id, product_id, variant_id, prescription_id,
+      `SELECT id, product_id, variant_id, prescription_id,
               product_name, product_slug, variant_sku, lens_config,
               base_price, lens_delta, unit_price, quantity, line_total,
               variant_attributes
@@ -710,7 +688,7 @@ router.get('/orders/:id', requireCustomer, async (req, res) => {
         fulfillment_status: order.fulfillment_status,
         archived: order.archived,
         paid_at: order.paid_at,
-        estimated_delivery_date: order.estimated_delivery_date, // <--- ADDED
+        estimated_delivery_date: order.estimated_delivery_date,
         created_at: order.created_at,
         updated_at: order.updated_at,
         items: itemsResult.rows,

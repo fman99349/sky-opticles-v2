@@ -53,6 +53,7 @@ import OrderTracker from '../components/OrderTracker';
 import CheckoutScreen from './CheckoutScreen';
 import AddressModal from '../components/AddressModal';
 import { useNotifications } from '../notifications/NotificationContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { dashStyles as d } from './dashboardStyles';
 import { shopStyles as s } from './shopStyles';
 import ShopListScreen from './ShopListScreen';
@@ -810,6 +811,7 @@ export default function DashboardScreen({ onOpenProduct }) {
   const { user, signOut } = useAuth();
   const { addItem, count } = useCart();
   const { currency } = useCurrency();
+    const insets = useSafeAreaInsets();
 
   const [tab, setTab] = useState('shop');
   const [showNotifications, setShowNotifications] = useState(false);
@@ -884,12 +886,17 @@ export default function DashboardScreen({ onOpenProduct }) {
       <View style={d.content}>{renderBody()}</View>
 
       {toast ? (
-        <View style={{ position: 'absolute', bottom: 90, left: 20, right: 20, backgroundColor: NAVY, paddingVertical: 10, paddingHorizontal: 14, borderRadius: 4 }}>
+        <View style={{ position: 'absolute', bottom: 90 + insets.bottom, left: 20, right: 20, backgroundColor: NAVY, paddingVertical: 10, paddingHorizontal: 14, borderRadius: 4 }}>
           <Text style={{ color: GOLD, fontSize: 11, fontWeight: '700', textAlign: 'center' }}>{toast}</Text>
         </View>
       ) : null}
 
-      <BottomTabs active={showNotifications ? null : tab} onChange={(t) => { setShowNotifications(false); setTab(t); }} cartCount={count} />
+      {/* Bottom nav — wrapped to pad above the Android system navigation bar.
+          Without this, the tabs sit under the OS buttons and touches are lost
+          to home/back/recents. */}
+      <View style={{ paddingBottom: insets.bottom, backgroundColor: '#101D2C' }}>
+        <BottomTabs active={showNotifications ? null : tab} onChange={(t) => { setShowNotifications(false); setTab(t); }} cartCount={count} />
+      </View>
     </SafeAreaView>
   );
 }

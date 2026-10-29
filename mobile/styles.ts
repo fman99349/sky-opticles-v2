@@ -1,4 +1,4 @@
-import { StyleSheet } from 'react-native';
+import { StyleSheet, Dimensions } from 'react-native';
 
 const C = {
   navy: '#101D2C',
@@ -179,14 +179,44 @@ heroLabelDark: {
     letterSpacing: 1.2,
     paddingVertical: 10,
   },
-  hero: {
-    flex: 1,
-    minHeight: 300,
-    marginHorizontal: 13,
-    borderRadius: 5,
-    overflow: 'hidden',
-    backgroundColor: C.navyLight,
-  },
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ hero: {
+  // Fixed proportional height instead of flex — keeps the bottom section
+  // (headline, GET STARTED button) visible on all screen sizes.
+  height: Math.min(Dimensions.get('window').height * 0.50, 480),
+  marginHorizontal: 13,
+  borderRadius: 5,
+  overflow: 'hidden',
+  backgroundColor: C.navyLight,
+},
   heroImageWrap: { ...StyleSheet.absoluteFill, overflow: 'hidden' },
   heroImage: { width: '100%', height: '100%' },
   heroShade: {
@@ -227,20 +257,20 @@ heroLabelDark: {
     letterSpacing: 2.2,
     marginBottom: 13,
   },
-  heroTitle: {
-    color: C.white,
-    fontSize: 37,
-    lineHeight: 43,
-    fontWeight: '800',
-    letterSpacing: -1.2,
-  },
-  heroDescription: {
-    color: '#F0F1F2',
-    fontSize: 12,
-    lineHeight: 19,
-    marginTop: 12,
-    maxWidth: 280,
-  },
+ heroTitle: {
+  color: C.white,
+  fontSize: Dimensions.get('window').height < 700 ? 28 : 34,
+  lineHeight: Dimensions.get('window').height < 700 ? 34 : 40,
+  fontWeight: '800',
+  letterSpacing: -1,
+},
+ heroDescription: {
+  color: '#F0F1F2',
+  fontSize: 12,
+  lineHeight: 19,
+  marginTop: 10,
+  maxWidth: 280,
+},
   dots: { flexDirection: 'row', alignItems: 'center', marginTop: 23 },
   dot: {
     width: 7,

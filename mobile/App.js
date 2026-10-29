@@ -28,6 +28,7 @@ import { defaultConfigForProductType } from './data/lensOptions';
 import ForgotPasswordScreen from './screens/ForgotPasswordScreen';
 import { CartProvider, useCart } from './cart/CartContext';
 import { AuthProvider, useAuth } from './auth/AuthContext';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NotificationProvider } from './notifications/NotificationContext';
 import { CurrencyProvider, useCurrency } from './utils/CurrencyContext';
 import Brand from './components/Brand';
@@ -399,14 +400,16 @@ function AppWithIntro() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <NotificationProvider>
-        <CurrencyProvider>
-          <CartProvider>
-            <AppWithIntro />
-          </CartProvider>
-        </CurrencyProvider>
-      </NotificationProvider>
-    </AuthProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <NotificationProvider>
+          <CurrencyProvider>
+            <CartProvider>
+              <AppWithIntro />
+            </CartProvider>
+          </CurrencyProvider>
+        </NotificationProvider>
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }

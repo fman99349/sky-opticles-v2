@@ -16,7 +16,8 @@
       "adaptiveIcon": {
         "backgroundColor": "#101D2C",
         "foregroundImage": "./assets/android-icon-foreground.png"
-      }
+      },
+      "package": "com.diamonddee.app"
     },
     "web": {
       "favicon": "./assets/favicon.png"

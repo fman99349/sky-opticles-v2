@@ -44,7 +44,7 @@ function layout({ title, preheader, body, cta, ctaUrl, footer }) {
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;background:${BRAND.white};border-radius:8px;overflow:hidden;">
           <tr>
             <td style="background:${BRAND.navy};padding:24px 28px;">
-              <div style="font-size:12px;font-weight:800;letter-spacing:3px;color:${BRAND.gold};">DIAMOND DEE</div>
+              <div style="font-size:12px;font-weight:800;letter-spacing:3px;color:${BRAND.gold};">DIAMOND DEE💎</div>
               <div style="font-size:9px;font-weight:700;letter-spacing:2px;color:${BRAND.muted};margin-top:4px;">POWERED BY DMD GENERAL MARKET PLACE</div>
             </td>
           </tr>
@@ -67,7 +67,7 @@ function layout({ title, preheader, body, cta, ctaUrl, footer }) {
             </td>
           </tr>
         </table>
-        <div style="text-align:center;font-size:10px;color:${BRAND.muted};margin-top:18px;">© ${new Date().getFullYear()} Diamond Dee · SKY OPTICLES</div>
+        <div style="text-align:center;font-size:10px;color:${BRAND.muted};margin-top:18px;">© ${new Date().getFullYear()} Diamond Dee · General Market Place</div>
       </td>
     </tr>
   </table>

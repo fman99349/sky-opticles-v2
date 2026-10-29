@@ -1,9 +1,11 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const pool = require('../db');
 const { sendExpoPush } = require('../utils/expoPush');
-const crypto = require('crypto');
+const { sendEmail } = require('../utils/email');
+const { passwordResetEmail, welcomeEmail } = require('../utils/emailTemplates');
 
 const router = express.Router();
 
@@ -31,8 +33,6 @@ function isValidEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
 }
 
-// Loose phone validation: 10–15 digits, ignoring spaces, dashes, parentheses,
-// and the leading +. Accepts formats like "+27 82 123 4567" and "0821234567".
 function isValidPhone(value) {
   if (typeof value !== 'string') return false;
   if (value.length > PHONE_MAX) return false;
@@ -60,8 +60,6 @@ function handleError(res, error, operation) {
   return res.status(500).json({ error: 'An unexpected server error occurred.' });
 }
 
-// Shared JWT verification for endpoints that need the signed-in customer.
-// Returns the customer row, or null after sending the appropriate error.
 async function loadCustomerFromAuthHeader(req, res) {
   const header = req.headers.authorization || '';
   const match = header.match(/^Bearer\s+(.+)$/i);
@@ -151,13 +149,30 @@ router.post('/auth/register', async (req, res) => {
     const user = result.rows[0];
     const token = signToken(user);
 
-    // --- NOTIFICATION TRIGGER ---
+    // In-app notification (bell icon)
     await pool.query(
       `INSERT INTO notifications (customer_id, title, message, type)
        VALUES ($1, $2, $3, 'account')`,
       [user.id, 'Welcome to SKY OPTICLES!', 'Your account is ready. Start exploring our collection today.']
     );
-    // ----------------------------
+
+    // Welcome email — AWAITED. Fire-and-forget Nodemailer sends drop silently
+    // because the SMTP transaction gets reaped before it completes.
+    try {
+      const tpl = welcomeEmail({ name: user.name });
+      const emailResult = await sendEmail({
+        to: user.email,
+        subject: tpl.subject,
+        html: tpl.html,
+      });
+      if (!emailResult.ok) {
+        console.warn('[register] Welcome email failed:', emailResult.error);
+      } else {
+        console.log(`[register] Welcome email sent to ${user.email}`);
+      }
+    } catch (err) {
+      console.warn('[register] Welcome email error:', err.message);
+    }
 
     res.status(201).json({ data: { user: publicUser(user), token } });
   } catch (error) {
@@ -216,20 +231,6 @@ router.get('/auth/me', async (req, res) => {
 
 // ---------------------------------------------------------------------------
 // PATCH /api/auth/me
-// Update name, phone, or email on the signed-in customer's account.
-// All fields optional; only provided fields are updated.
-//
-// Email change implications:
-//  - The unique index is case-insensitive, so 'A@x' and 'a@x' collide.
-//  - The current JWT stays valid because it identifies the user by id, not
-//    email. The email inside the token is informational only.
-//  - A 409 is returned if the new email is already in use by another account.
-//
-// Phone is optional (can be null/empty to clear). When provided, it must
-// contain 10–15 digits, ignoring formatting characters.
-//
-// Password change is intentionally NOT included here — it will be its own
-// endpoint (requires current password + new password) when implemented.
 // ---------------------------------------------------------------------------
 router.patch('/auth/me', async (req, res) => {
   const { name, phone, email } = req.body || {};
@@ -252,9 +253,7 @@ router.patch('/auth/me', async (req, res) => {
       values.push(null);
     } else {
       if (!isValidPhone(phone)) {
-        return res.status(400).json({
-          error: 'Phone must contain 10–15 digits.',
-        });
+        return res.status(400).json({ error: 'Phone must contain 10–15 digits.' });
       }
       values.push(phone.trim());
     }
@@ -263,9 +262,7 @@ router.patch('/auth/me', async (req, res) => {
 
   if (email !== undefined) {
     if (!isValidEmail(email)) {
-      return res.status(400).json({
-        error: 'A valid email address is required.',
-      });
+      return res.status(400).json({ error: 'A valid email address is required.' });
     }
     values.push(email.trim());
     setClauses.push(`email = $${values.length}`);
@@ -301,8 +298,6 @@ router.patch('/auth/me', async (req, res) => {
 
     res.json({ data: { user: publicUser(result.rows[0]) } });
   } catch (error) {
-    // Explicit 409 for email collision so the mobile app can show a clear
-    // message instead of a generic 500.
     if (error.code === '23505') {
       return res.status(409).json({
         error: 'That email is already registered to another account.',
@@ -312,19 +307,16 @@ router.patch('/auth/me', async (req, res) => {
   }
 });
 
-
-
-
-
-
+// ---------------------------------------------------------------------------
 // PATCH /api/auth/push-token
+// ---------------------------------------------------------------------------
 router.patch('/auth/push-token', async (req, res) => {
   const header = req.headers.authorization || '';
   const match = header.match(/^Bearer\s+(.+)$/i);
   if (!match) return res.status(401).json({ error: 'Missing auth header.' });
 
   let payload;
-  try { payload = jwt.verify(match[1], process.env.JWT_SECRET); } 
+  try { payload = jwt.verify(match[1], process.env.JWT_SECRET); }
   catch { return res.status(401).json({ error: 'Invalid token.' }); }
 
   const { pushToken } = req.body;
@@ -338,15 +330,9 @@ router.patch('/auth/push-token', async (req, res) => {
   }
 });
 
-
-
-
-
-
-
-
-
+// ---------------------------------------------------------------------------
 // POST /api/auth/forgot-password
+// ---------------------------------------------------------------------------
 router.post('/auth/forgot-password', async (req, res) => {
   const { email } = req.body || {};
   if (!isValidEmail(email)) {
@@ -354,33 +340,56 @@ router.post('/auth/forgot-password', async (req, res) => {
   }
 
   try {
-    const userRes = await pool.query('SELECT id, email FROM users WHERE LOWER(email) = $1', [email.trim().toLowerCase()]);
-    
-    // Security: Always return success even if the email doesn't exist to prevent email harvesting
+    // Select `name` too so we can personalise the email greeting
+    const userRes = await pool.query(
+      'SELECT id, email, name FROM users WHERE LOWER(email) = $1',
+      [email.trim().toLowerCase()]
+    );
+
+    // Security: Always return success even if the email doesn't exist
     if (userRes.rows.length === 0) {
       return res.json({ success: true, message: 'If that email exists, a reset code has been sent.' });
     }
 
     const user = userRes.rows[0];
-    
-    // Generate a 6-character uppercase alphanumeric code
+
+    // 6-char uppercase alphanumeric code
     const token = crypto.randomBytes(3).toString('hex').toUpperCase();
-    
+
     // Expire in 15 minutes
     const expiresAt = new Date(Date.now() + 15 * 60000);
 
     // Save to database
-    await pool.query('DELETE FROM password_reset_tokens WHERE user_id = $1', [user.id]); // Clear old ones
+    await pool.query('DELETE FROM password_reset_tokens WHERE user_id = $1', [user.id]);
     await pool.query(
       'INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)',
       [user.id, token, expiresAt]
     );
 
-    // FOR NOW: Print the code to the backend terminal instead of sending an email
-    console.log('\n=============================================');
-    console.log(`🔐 PASSWORD RESET CODE for ${user.email}`);
-    console.log(`👉 CODE: ${token}`);
-    console.log('=============================================\n');
+    // Send the reset code via email — AWAITED
+    try {
+      const tpl = passwordResetEmail({ name: user.name, code: token });
+      const emailResult = await sendEmail({
+        to: user.email,
+        subject: tpl.subject,
+        html: tpl.html,
+      });
+      if (!emailResult.ok) {
+        console.warn('[forgot-password] Reset email failed:', emailResult.error);
+      } else {
+        console.log(`[forgot-password] Reset email sent to ${user.email}`);
+      }
+    } catch (err) {
+      console.warn('[forgot-password] Reset email error:', err.message);
+    }
+
+    // In dev, also print the code so you can test without checking email
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('\n=============================================');
+      console.log(`🔐 PASSWORD RESET CODE for ${user.email}`);
+      console.log(`👉 CODE: ${token}`);
+      console.log('=============================================\n');
+    }
 
     res.json({ success: true, message: 'If that email exists, a reset code has been sent.' });
   } catch (error) {
@@ -388,7 +397,9 @@ router.post('/auth/forgot-password', async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------------------
 // POST /api/auth/reset-password
+// ---------------------------------------------------------------------------
 router.post('/auth/reset-password', async (req, res) => {
   const { email, token, newPassword } = req.body || {};
 
@@ -408,7 +419,7 @@ router.post('/auth/reset-password', async (req, res) => {
     const userId = userRes.rows[0].id;
 
     const tokenRes = await pool.query(
-      `SELECT id FROM password_reset_tokens 
+      `SELECT id FROM password_reset_tokens
        WHERE user_id = $1 AND token = $2 AND expires_at > NOW()`,
       [userId, token.trim().toUpperCase()]
     );
@@ -417,10 +428,8 @@ router.post('/auth/reset-password', async (req, res) => {
       return res.status(400).json({ error: 'Invalid or expired reset code.' });
     }
 
-    // Hash the new password
     const passwordHash = await bcrypt.hash(newPassword, BCRYPT_COST);
 
-    // Update user password and delete the used token
     await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [passwordHash, userId]);
     await pool.query('DELETE FROM password_reset_tokens WHERE user_id = $1', [userId]);
 
@@ -429,11 +438,5 @@ router.post('/auth/reset-password', async (req, res) => {
     handleError(res, error, 'Reset password failed');
   }
 });
-
-
-
-
-
-
 
 module.exports = router;

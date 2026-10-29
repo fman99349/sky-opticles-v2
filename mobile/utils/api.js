@@ -1,23 +1,30 @@
 // Single place where the mobile app talks to the backend.
 // Keep this in sync with the desktop admin's admin/src/api/client.js base URL.
 
-// The API base URL is read from EXPO_PUBLIC_API_URL at build time.
-// - In dev: set it in mobile/.env (your laptop's LAN IP)
-// - In production: set it in the EAS build profile or a production .env
-//
-// Fallback keeps the app working if the env var isn't set (e.g. fresh clone
-// without an .env file — you'll see a clear warning in Metro's terminal).
 const fromEnv = process.env.EXPO_PUBLIC_API_URL;
-const FALLBACK = 'http://localhost:3000/api';
+
+// Use a reserved TLD for the fallback (RFC 2606). `localhost` on Android
+// produces a confusing "cleartext not permitted" error that looks like a
+// network policy issue. `.invalid` produces a clean DNS failure that points
+// straight at the missing configuration.
+const FALLBACK = 'http://MISSING_ENV_VAR.invalid/api';
 
 if (!fromEnv) {
-  console.warn(
-    '[api] EXPO_PUBLIC_API_URL is not set. Falling back to localhost — this will NOT work on a physical device. ' +
-    'Create mobile/.env with EXPO_PUBLIC_API_URL=http://<10.54.45.119>:3000/api'
+  console.error(
+    '[api] FATAL: EXPO_PUBLIC_API_URL is not set.\n' +
+    '      Fix: add to mobile/.env:\n' +
+    '        EXPO_PUBLIC_API_URL=https://your-backend/api\n' +
+    '      Then restart Metro: npx expo start --dev-client --clear\n' +
+    '      Then kill and reopen the app on the phone.'
   );
 }
 
 export const API_URL = fromEnv || FALLBACK;
+
+// Unconditional startup log so you can verify which URL the app is using.
+// Look for this line in the Metro terminal or the app's console logs:
+//   [api] API_URL = https://reprimand-oxidation-atlas.ngrok-free.dev/api
+console.log('[api] API_URL =', API_URL);
 
 async function request(path, options = {}) {
   const url = `${API_URL}${path}`;
@@ -66,16 +73,12 @@ export async function fetchCategories() {
   return result.data;
 }
 
-
-
-
 // Fetch a single product by id, including its variants[] and images[].
 // Both arrays are needed by the mobile detail screen to build the variant
 // picker and to choose the correct preview image per colour.
 export async function fetchProductDetail(id, currency = 'ZAR') {
   return request(`/products/${id}?currency=${currency}`);
 }
-
 
 export async function registerUser({ name, email, password }) {
   return request('/auth/register', {
@@ -97,10 +100,6 @@ export async function fetchMe(token) {
   });
 }
 
-
-
-
-
 // Upload a prescription file. Requires a customer JWT.
 //
 // Uses XMLHttpRequest rather than fetch. Expo SDK 57's WinterCG fetch rejects
@@ -108,9 +107,6 @@ export async function fetchMe(token) {
 // Android content:// URIs through expo-file-system's File wrapper. The old
 // React Native networking layer handles both natively, so we use it here —
 // and only here. All other calls in this file continue to use fetch.
-//
-// `asset` shape: { uri, name, mimeType } — from expo-document-picker.
-// Returns: { data: { id, filename, original_name, mime_type, size_bytes, created_at } }
 export function uploadPrescription(token, asset) {
   return new Promise((resolve, reject) => {
     if (!token) {
@@ -182,7 +178,6 @@ export function uploadPrescription(token, asset) {
   });
 }
 
-
 // --- Orders ---
 // These three require a customer JWT. The backend rejects admin tokens on
 // these endpoints with 403. Payload shape mirrors POST /api/orders:
@@ -211,8 +206,6 @@ export async function getMyOrder(token, id) {
   });
 }
 
-
-
 // Initiate a PayFast payment for an existing order.
 // Returns { data: { redirect_url, order_id, order_number, amount, currency } }.
 export async function initiatePayfastPayment(token, orderId) {
@@ -223,12 +216,10 @@ export async function initiatePayfastPayment(token, orderId) {
   });
 }
 
-
 // --- Account profile ---
 // Updates any subset of { name, phone, email } on the signed-in customer's
 // account. The backend validates each field independently and returns the
 // updated user object. Phone can be cleared by passing null or ''.
-
 export async function updateMyProfile(token, patch) {
   if (!token) throw new Error('Please sign in to update your profile.');
   return request('/auth/me', {
@@ -293,7 +284,6 @@ export async function fetchLensOptions(currency = 'ZAR') {
   return result.data.groups;
 }
 
-
 // --- Password Reset ---
 export async function requestPasswordReset(email) {
   return request('/auth/forgot-password', {
@@ -314,8 +304,6 @@ export async function fetchProduct3DModel(productId, variantId = null) {
   const result = await request(`/products/${productId}/3d-models${qs}`);
   return result.data?.[0] || null;
 }
-
-
 
 // --- Marketplace: shops ---
 export async function fetchShopTypes() {
