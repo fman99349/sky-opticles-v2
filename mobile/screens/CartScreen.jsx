@@ -64,17 +64,7 @@ export default function CartScreen({ onBack, onCheckout }) {
 
               return (
                 <View style={styles.cartRow}>
-                  <View style={styles.cartImageBox}>
-                    {uri ? (
-                      <Image
-                        source={{ uri }}
-                        style={styles.cartImage}
-                        resizeMode="contain"
-                      />
-                    ) : (
-                      <Text style={styles.cartImagePlaceholder}>SO</Text>
-                    )}
-                  </View>
+                  
 
                   <View style={styles.cartInfo}>
                     <Text numberOfLines={2} style={styles.cartName}>

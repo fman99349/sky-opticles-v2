@@ -27,28 +27,56 @@ import {
   List,
   Eye,
   Layers,
+  Store,
 } from 'lucide-react';
 import Settings from './pages/Settings.jsx';
+import SellerDashboard from './pages/SellerDashboard.jsx';
+import Sellers from './pages/Sellers.jsx';
 // Navigation items for the admin sidebar.
 // Only Dashboard and Products are wired to real pages today. The rest
 // are explicit placeholders — no invented functionality.
+// Nav items declare who may see them. "all" = both roles, "owner" = platform owner only.
+// The seller dashboard is rendered by the dashboard branch below based on role.
 const NAV = [
-  { id: 'dashboard',  label: 'Dashboard',  icon: Home,      render: () => <Dashboard /> },
-  { id: 'products',   label: 'Products',   icon: Package,   render: () => <Products /> },
-  { id: 'orders',     label: 'Orders',     icon: ClipboardList, render: () => <Orders /> },
-  { id: 'categories', label: 'Categories', icon: Folder,    render: () => <Categories /> },
-  { id: 'brands',     label: 'Brands',     icon: Tag,       render: () => <Brands /> },
-  { id: 'variants',   label: 'Variants',   icon: List,      render: () => <Variants /> },
-  { id: 'lensOptions',label: 'Lens Options',icon: Eye,      render: () => <LensOptions /> },
-  { id: 'images',     label: 'Images',     icon: ImageIcon, render: () => <Images /> },
-  { id: 'productTypes',label: 'Product Types',icon: Layers, render: () => <ProductTypes /> },
-    { id: 'settings', label: 'Settings', icon: SettingsIcon, render: () => <Settings /> },
+  { id: 'dashboard',   label: 'Dashboard',   icon: Home,          role: 'all' },
+  { id: 'products',    label: 'Products',    icon: Package,       role: 'all' },
+  { id: 'orders',      label: 'Orders',      icon: ClipboardList, role: 'all' },
+  { id: 'sellers',     label: 'Sellers',     icon: Store,         role: 'owner' },
+  { id: 'categories',  label: 'Categories',  icon: Folder,        role: 'owner' },
+  { id: 'brands',      label: 'Brands',      icon: Tag,           role: 'owner' },
+  { id: 'variants',    label: 'Variants',    icon: List,          role: 'all' },
+  { id: 'lensOptions', label: 'Lens Options',icon: Eye,           role: 'owner' },
+  { id: 'images',      label: 'Images',      icon: ImageIcon,     role: 'all' },
+  { id: 'productTypes',label: 'Product Types',icon: Layers,       role: 'owner' },
+  { id: 'settings',    label: 'Settings',    icon: SettingsIcon,  role: 'all' },
 ];
 
 const SIDEBAR_KEY = 'sky_admin_sidebar_collapsed';
 
 function Shell({ admin, onSignOut }) {
   const [active, setActive] = useState('dashboard');
+  const isOwner = admin?.is_platform_owner === true;
+
+  // Nav filtered by role
+  const visibleNav = NAV.filter((n) => n.role === 'all' || (n.role === 'owner' && isOwner));
+
+  // Page router — the dashboard branches by role, everything else is shared.
+  const renderCurrent = () => {
+    switch (active) {
+      case 'dashboard':    return isOwner ? <Dashboard /> : <SellerDashboard admin={admin} />;
+      case 'products':     return <Products />;
+      case 'orders':       return <Orders />;
+      case 'sellers':      return <Sellers />;
+      case 'categories':   return <Categories />;
+      case 'brands':       return <Brands />;
+      case 'variants':     return <Variants />;
+      case 'lensOptions':  return <LensOptions />;
+      case 'images':       return <Images />;
+      case 'productTypes': return <ProductTypes />;
+      case 'settings':     return <Settings />;
+      default:             return null;
+    }
+  };
   const [toast, setToast] = useState('');
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -58,7 +86,7 @@ function Shell({ admin, onSignOut }) {
     }
   });
 
-  const current = NAV.find((n) => n.id === active) || NAV[0];
+  const current = visibleNav.find((n) => n.id === active) || visibleNav[0];
   const showToast = (msg) => {
     setToast(msg);
     setTimeout(() => setToast(''), 2600);
@@ -116,11 +144,8 @@ function Shell({ admin, onSignOut }) {
           </div>
 
           <nav className="nav">
-                        {NAV.map((item) => {
+            {visibleNav.map((item) => {
               const Icon = item.icon || Package;
-              if (!item.icon) {
-                console.warn(`Missing icon for nav item: ${item.id}`);
-              }
               return (
                 <button
                   key={item.id}
@@ -165,7 +190,7 @@ function Shell({ admin, onSignOut }) {
         </aside>
 
         <main className="content">
-          <section className="page">{current.render()}</section>
+          <section className="page">{renderCurrent()}</section>
         </main>
       </div>
 

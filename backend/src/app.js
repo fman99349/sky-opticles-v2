@@ -23,6 +23,7 @@ const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
 app.use(cors());
+app.use(express.urlencoded({ extended: false, limit: '1mb' }));
 app.use(express.json());
 app.use('/api', catalogueRoutes);
 app.use('/api', inventoryRoutes);
@@ -38,7 +39,22 @@ app.use('/api', addressRoutes);
 app.use('/api', notificationRoutes);
 app.use('/api', adminLensOptionsRoutes);
 app.use('/api', adminStatsRoutes);
-app.use('/api', require('./routes/product3d'));
+const payfastRoutes = require('./routes/payfast');
+// 3D model endpoints DISABLED — saves AI generation cost. Code and DB table
+// remain intact; uncomment the line to re-enable.
+// app.use('/api', require('./routes/product3d'));
+
+// Marketplace — seller onboarding, shop management
+app.use('/api', require('./routes/shopInvites'));
+app.use('/api', require('./routes/shopsSeller'));
+app.use('/api', require('./routes/shopsAdmin'));
+app.use('/api', require('./routes/shopsPublic'));
+app.use(require('./routes/invitePage'));
+app.use('/api', payfastRoutes);
+app.use(express.urlencoded({ extended: false }));
+
+// Serve shop logo/banner uploads publicly
+app.use('/uploads/shops', express.static(path.join(__dirname, '..', 'uploads', 'shops')));
 
 
 // Serve product image uploads publicly. Prescriptions live under the same

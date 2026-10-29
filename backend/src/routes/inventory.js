@@ -1,10 +1,15 @@
-const express = require('express');
+﻿const express = require('express');
 const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { toAbsoluteUrl } = require('../utils/url');
 const pool = require('../db');
+const { requireAdmin } = require('./adminAuth');
+const {
+  requireShopAccess,
+  canAccessShop,
+} = require('../middleware/shopAccess');
 
 const router = express.Router();
 
@@ -110,11 +115,73 @@ function isValidHexColor(value) {
 }
 
 // ---------------------------------------------------------------------------
+// Shop-ownership helpers + middleware
+// ---------------------------------------------------------------------------
+// Every mutation below is chained: requireAdmin â†’ requireShopAccess â†’
+// requireProductAccess (or requireVariantAccess). Access checks run BEFORE
+// the handler body, so handlers can assume the caller owns the resource.
+
+async function loadProductShopId(productId) {
+  const r = await pool.query('SELECT shop_id FROM products WHERE id = $1', [productId]);
+  return r.rows[0]?.shop_id ?? null;
+}
+
+async function loadVariantParentShopId(variantId) {
+  const r = await pool.query(
+    `SELECT p.shop_id
+       FROM product_variants v
+       JOIN products p ON p.id = v.product_id
+      WHERE v.id = $1`,
+    [variantId]
+  );
+  return r.rows[0]?.shop_id ?? null;
+}
+
+// Verifies the caller can access the product in :productId.
+// Returns 404 (not 403) when it exists but belongs to another shop â€” this
+// prevents leaking existence of another seller's products.
+async function requireProductAccess(req, res, next) {
+  const productId = req.params.productId;
+  if (!validId(productId)) {
+    return res.status(400).json({ error: 'Invalid product ID.' });
+  }
+  try {
+    const shopId = await loadProductShopId(Number(productId));
+    if (shopId === null || !canAccessShop(req, shopId)) {
+      return res.status(404).json({ error: 'Product not found.' });
+    }
+    req._shopId = shopId;
+    next();
+  } catch (err) {
+    return handleError(res, err, 'Product access check failed');
+  }
+}
+
+// Verifies the caller can access the variant in :id.
+async function requireVariantAccess(req, res, next) {
+  const variantId = req.params.id;
+  if (!validId(variantId)) {
+    return res.status(400).json({ error: 'Invalid variant ID.' });
+  }
+  try {
+    const shopId = await loadVariantParentShopId(Number(variantId));
+    if (shopId === null || !canAccessShop(req, shopId)) {
+      return res.status(404).json({ error: 'Variant not found.' });
+    }
+    req._shopId = shopId;
+    req._variantId = Number(variantId);
+    next();
+  } catch (err) {
+    return handleError(res, err, 'Variant access check failed');
+  }
+}
+
+// ---------------------------------------------------------------------------
 // VARIANTS
 // ---------------------------------------------------------------------------
 
 // GET /api/products/:productId/variants
-router.get('/products/:productId/variants', async (req, res) => {
+router.get('/products/:productId/variants', requireAdmin, requireShopAccess, requireProductAccess, async (req, res) => {
   const { productId } = req.params;
 
   if (!validId(productId)) {
@@ -139,7 +206,7 @@ router.get('/products/:productId/variants', async (req, res) => {
 });
 
 // POST /api/products/:productId/variants
-router.post('/products/:productId/variants', async (req, res) => {
+router.post('/products/:productId/variants', requireAdmin, requireShopAccess, requireProductAccess, async (req, res) => {
   const { productId } = req.params;
    const {
     sku,
@@ -278,7 +345,7 @@ router.post('/products/:productId/variants', async (req, res) => {
 
 
 // PATCH /api/variants/:id/stock
-router.patch('/variants/:id/stock', async (req, res) => {
+router.patch('/variants/:id/stock', requireAdmin, requireShopAccess, requireVariantAccess, async (req, res) => {
   const { id } = req.params;
   const { stockQuantity } = req.body;
 
@@ -311,8 +378,8 @@ router.patch('/variants/:id/stock', async (req, res) => {
   }
 });
 
-// PATCH /api/variants/:id — full edit
-router.patch('/variants/:id', async (req, res) => {
+// PATCH /api/variants/:id â€” full edit
+router.patch('/variants/:id', requireAdmin, requireShopAccess, requireVariantAccess, async (req, res) => {
   const { id } = req.params;
 
   if (!validId(id)) {
@@ -475,7 +542,7 @@ router.patch('/variants/:id', async (req, res) => {
 });
 
 // DELETE /api/variants/:id
-router.delete('/variants/:id', async (req, res) => {
+router.delete('/variants/:id', requireAdmin, requireShopAccess, requireVariantAccess, async (req, res) => {
   const { id } = req.params;
 
   if (!validId(id)) {
@@ -511,7 +578,7 @@ router.delete('/variants/:id', async (req, res) => {
 // ---------------------------------------------------------------------------
 
 // GET /api/products/:productId/images
-router.get('/products/:productId/images', async (req, res) => {
+router.get('/products/:productId/images', requireAdmin, requireShopAccess, requireProductAccess, async (req, res) => {
   const { productId } = req.params;
 
   if (!validId(productId)) {
@@ -540,8 +607,8 @@ router.get('/products/:productId/images', async (req, res) => {
   }
 });
 
-// POST /api/products/:productId/images — create by URL
-router.post('/products/:productId/images', async (req, res) => {
+// POST /api/products/:productId/images â€” create by URL
+router.post('/products/:productId/images', requireAdmin, requireShopAccess, requireProductAccess, async (req, res) => {
   const { productId } = req.params;
     const {
     imageUrl,
@@ -660,8 +727,8 @@ router.post('/products/:productId/images', async (req, res) => {
 
 
 
-// POST /api/products/:productId/images/upload — create by file
-router.post('/products/:productId/images/upload', (req, res) => {
+// POST /api/products/:productId/images/upload â€” create by file
+router.post('/products/:productId/images/upload', requireAdmin, requireShopAccess, requireProductAccess, (req, res) => {
   const { productId } = req.params;
 
   if (!validId(productId)) {
@@ -825,7 +892,7 @@ router.post('/products/:productId/images/upload', (req, res) => {
 });
 
 // PATCH /api/products/:productId/images/:imageId
-router.patch('/products/:productId/images/:imageId', async (req, res) => {
+router.patch('/products/:productId/images/:imageId', requireAdmin, requireShopAccess, requireProductAccess, async (req, res) => {
   const { productId, imageId } = req.params;
 
   if (!validId(productId) || !validId(imageId)) {
@@ -1010,7 +1077,7 @@ router.patch('/products/:productId/images/:imageId', async (req, res) => {
 });
 
 // DELETE /api/products/:productId/images/:imageId
-router.delete('/products/:productId/images/:imageId', async (req, res) => {
+router.delete('/products/:productId/images/:imageId', requireAdmin, requireShopAccess, requireProductAccess, async (req, res) => {
   const { productId, imageId } = req.params;
 
   if (!validId(productId) || !validId(imageId)) {
@@ -1057,9 +1124,7 @@ router.delete('/products/:productId/images/:imageId', async (req, res) => {
 // PNG the same size as the image, with the lens area drawn in white.
 // The file is saved next to the image and the image row's
 // lens_layer_url is updated. Any previous lens layer file is unlinked.
-router.post(
-  '/products/:productId/images/:imageId/lens-layer',
-  (req, res) => {
+router.post('/products/:productId/images/:imageId/lens-layer', requireAdmin, requireShopAccess, requireProductAccess, (req, res) => {
     const { productId, imageId } = req.params;
 
     if (!validId(productId) || !validId(imageId)) {

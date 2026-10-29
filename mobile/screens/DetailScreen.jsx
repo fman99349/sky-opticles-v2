@@ -1,8 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Animated,
-  Image,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -22,7 +20,7 @@ import PrimaryButton from '../components/PrimaryButton';
 import VariantPicker from '../components/VariantPicker';
 import LensWizard from './LensWizard';
 import ProductSpecs from '../components/ProductSpecs';
-import Product3DViewer from '../components/Product3DViewer';
+import ProductImageCarousel from '../components/ProductImageCarousel';
 
 const C = { navy: '#101D2C', gold: '#D7B987' };
 
@@ -32,11 +30,7 @@ export default function DetailScreen({ product, onBack, onAddToCart }) {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [detail, setDetail] = useState(null);
   const [selectedVariantId, setSelectedVariantId] = useState(null);
-  const [currentImageUri, setCurrentImageUri] = useState(() => imageFor(product));
-  const fade = useRef(new Animated.Value(1)).current;
-  const [showFallbackCaption, setShowFallbackCaption] = useState(false);
   const [loading, setLoading] = useState(true);
-    const [show3D, setShow3D] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -63,58 +57,25 @@ export default function DetailScreen({ product, onBack, onAddToCart }) {
   const selectedVariant = variants.find((v) => String(v.id) === String(selectedVariantId));
   const variantSku = selectedVariant?.sku || null;
 
-  const { displayImage, displayUri, isFallback } = (() => {
-    if (selectedVariantId) {
-      const variantImg = images.find((img) => String(img.variant_id) === String(selectedVariantId));
-      if (variantImg) {
-        return { displayImage: variantImg, displayUri: variantImg.image_url, isFallback: false };
-      }
-      const primary = images.find((img) => img.is_primary && !img.variant_id);
-      const firstWide = images.find((img) => !img.variant_id);
-      const fallbackImg = primary || firstWide || null;
-      return {
-        displayImage: fallbackImg,
-        displayUri: fallbackImg?.image_url || imageFor(product),
-        isFallback: true,
-      };
-    }
-    const primary = images.find((img) => img.is_primary);
-    const fallbackImg = primary || images[0] || null;
-    return {
-      displayImage: fallbackImg,
-      displayUri: fallbackImg?.image_url || imageFor(product),
-      isFallback: false,
-    };
+  // Build the ordered gallery:
+  //  - No variant selected → all images in stored order (primary first).
+  //  - Variant selected    → that variant's images first, then product-wide.
+  const galleryImages = (() => {
+    if (!images || images.length === 0) return [];
+    if (!selectedVariantId) return images;
+    const variantImgs = images.filter(
+      (img) => String(img.variant_id) === String(selectedVariantId)
+    );
+    const wideImgs = images.filter((img) => !img.variant_id);
+    return [...variantImgs, ...wideImgs];
   })();
-
-  useEffect(() => {
-    if (!displayUri || displayUri === currentImageUri) {
-      setShowFallbackCaption(isFallback);
-      return;
-    }
-    Animated.timing(fade, { toValue: 0, duration: 160, useNativeDriver: true }).start(() => {
-      setCurrentImageUri(displayUri);
-      setShowFallbackCaption(isFallback);
-      Animated.timing(fade, { toValue: 1, duration: 260, useNativeDriver: true }).start();
-    });
-  }, [displayUri, currentImageUri, isFallback, fade]);
 
   const basePrice = Number(product.price || 0);
   const variantConfig = selectedVariantId ? { variantId: selectedVariantId, variantSku } : {};
   const needsConfigurator = product.has_configurator !== false;
     // Pick the 3D model to open: variant-specific if one exists,
   // otherwise the product-wide primary model, otherwise the first available.
-  const models3D = detail?.models_3d || [];
-  const model3D = (() => {
-    if (models3D.length === 0) return null;
-    if (selectedVariantId) {
-      const variantModel = models3D.find(
-        (m) => String(m.variant_id) === String(selectedVariantId)
-      );
-      if (variantModel) return variantModel;
-    }
-    return models3D.find((m) => m.is_primary) || models3D[0];
-  })();
+
 
   const variantAttrs = selectedVariant?.attributes || {};
   const attrText = Object.entries(variantAttrs)
@@ -173,50 +134,24 @@ export default function DetailScreen({ product, onBack, onAddToCart }) {
       </View>
 
       <ScrollView contentContainerStyle={styles.detailBody}>
-        <Pressable
-          onPress={model3D ? () => setShow3D(true) : undefined}
-          disabled={!model3D}
-          style={({ pressed }) => [pressed && model3D && { opacity: 0.9 }]}
-        >
-          <Animated.View style={[styles.detailImageBox, { opacity: fade }]}>
-            {currentImageUri ? (
-              <Image source={{ uri: currentImageUri }} style={styles.detailImage} resizeMode="contain" />
-            ) : (
-              <Text style={styles.detailPlaceholder}>SKY OPTICLES</Text>
-            )}
-
-            {model3D && (
-              <View
-                style={{
-                  position: 'absolute',
-                  top: 10,
-                  right: 10,
-                  backgroundColor: C.navy,
-                  paddingHorizontal: 10,
-                  paddingVertical: 6,
-                  borderRadius: 4,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 6,
-                  borderWidth: 1,
-                  borderColor: C.gold,
-                }}
-              >
-                <Text style={{ color: C.gold, fontSize: 10, fontWeight: '900', letterSpacing: 1.2 }}>
-                  3D
-                </Text>
-                <Text style={{ color: C.gold, fontSize: 12, fontWeight: '900' }}>
-                  ↻
-                </Text>
-              </View>
-            )}
-          </Animated.View>
-        </Pressable>
-
-        {showFallbackCaption && <Text style={styles.detailFallbackCaption}>Preview shown in another colour</Text>}
+        <ProductImageCarousel
+          images={galleryImages}
+          fallbackUri={imageFor(product)}
+          height={250}
+          imagesKey={selectedVariantId || 'all'}
+        />
 
         <Text style={styles.detailEyebrow}>{category(product)}</Text>
         <Text style={styles.detailName}>{product.name}</Text>
+
+        {product.shop_name ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8, marginBottom: 4 }}>
+            <Text style={{ color: '#7C8792', fontSize: 10, fontWeight: '700', letterSpacing: 1.2 }}>SOLD BY </Text>
+            <Text style={{ color: '#2E8D86', fontSize: 10, fontWeight: '900', letterSpacing: 1.2 }}>
+              {product.shop_name.toUpperCase()}
+            </Text>
+          </View>
+        ) : null}
 
         {variants.length >= 2 && (
           <VariantPicker variants={variants} selectedId={selectedVariantId} onSelect={setSelectedVariantId} />
@@ -263,15 +198,6 @@ export default function DetailScreen({ product, onBack, onAddToCart }) {
         <PrimaryButton title="BACK TO COLLECTION" onPress={onBack} outline />
       </ScrollView>
 
-      {model3D && (
-        <Product3DViewer
-          visible={show3D}
-          modelUrl={model3D.model_url}
-          posterUrl={model3D.poster_url || currentImageUri}
-          title={product.name}
-          onClose={() => setShow3D(false)}
-        />
-      )}
     </SafeAreaView>
   );
 }

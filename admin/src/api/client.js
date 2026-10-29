@@ -1,4 +1,4 @@
-// The desktop admin talks to the same shared backend as the mobile app.
+﻿// The desktop admin talks to the same shared backend as the mobile app.
 // If the desktop ever runs on a different machine, change this to that
 // machine's reachable address (e.g. http://10.252.93.85:3000/api).
 const API_BASE_URL =
@@ -6,7 +6,7 @@ const API_BASE_URL =
   'http://localhost:3000/api';
 
 // Reads the admin JWT from localStorage. Returns an empty object if no
-// token is stored — the backend will 401 with a clear message in that case.
+// token is stored â€” the backend will 401 with a clear message in that case.
 const ADMIN_TOKEN_KEY = 'sky_opticles_admin_token';
 
 function authHeaders() {
@@ -14,7 +14,7 @@ function authHeaders() {
     const token = window.localStorage.getItem(ADMIN_TOKEN_KEY);
     if (token) return { Authorization: `Bearer ${token}` };
   } catch {
-    // localStorage unavailable — ignore; the request will 401.
+    // localStorage unavailable â€” ignore; the request will 401.
   }
   return {};
 }
@@ -161,6 +161,14 @@ export const api = {
   deleteProductType: (id) =>
     request(`/product-types/${id}`, { method: 'DELETE' }),
 
+  listMyProducts: (params = {}) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== null && v !== '') qs.set(k, v);
+    }
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return request(`/admin/me/products${suffix}`);
+  },
   listProducts: (params = {}) => {
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(params)) {

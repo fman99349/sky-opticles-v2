@@ -22,6 +22,7 @@ function publicAdmin(row) {
     name: row.name,
     email: row.email,
     created_at: row.created_at,
+    is_platform_owner: row.is_platform_owner === true,
   };
 }
 
@@ -72,7 +73,7 @@ async function requireAdmin(req, res, next) {
 
   try {
     const result = await pool.query(
-      'SELECT id, name, email, created_at FROM admins WHERE id = $1',
+      'SELECT id, name, email, created_at, is_platform_owner FROM admins WHERE id = $1',
       [payload.sub]
     );
     if (result.rows.length === 0) {
@@ -106,7 +107,7 @@ router.post('/admin/auth/login', async (req, res) => {
 
   try {
     const result = await pool.query(
-      'SELECT id, name, email, password_hash, created_at FROM admins WHERE LOWER(email) = $1',
+      'SELECT id, name, email, password_hash, created_at, is_platform_owner FROM admins WHERE LOWER(email) = $1',
       [lowerEmail]
     );
 
@@ -207,7 +208,7 @@ router.patch('/admin/auth/me', requireAdmin, async (req, res) => {
   try {
     const result = await pool.query(
       `UPDATE admins SET ${setClauses.join(', ')} WHERE id = $${values.length} 
-       RETURNING id, name, email, created_at`,
+       RETURNING id, name, email, created_at, is_platform_owner`,
       values
     );
     res.json({ data: { admin: publicAdmin(result.rows[0]) } });
@@ -229,5 +230,15 @@ router.patch('/admin/auth/me', requireAdmin, async (req, res) => {
 
 
 
+// Role guard: must be called AFTER requireAdmin (which sets req.admin).
+// Used for platform-level actions: managing categories, brands, shops.
+function requirePlatformOwner(req, res, next) {
+  if (!req.admin || req.admin.is_platform_owner !== true) {
+    return res.status(403).json({ error: 'Platform owner access required.' });
+  }
+  next();
+}
+
 module.exports = router;
 module.exports.requireAdmin = requireAdmin;
+module.exports.requirePlatformOwner = requirePlatformOwner;

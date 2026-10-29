@@ -137,7 +137,9 @@ export default function Images() {
   useEffect(() => {
     loadImages(productId);
     loadVariants(productId);
-    load3DModels(productId);
+    // 3D models feature disabled — see app.js route unmount. Restore by
+    // uncommenting this line.
+    // load3DModels(productId);
   }, [productId]);
 
   const showToast = (msg) => {
@@ -398,7 +400,20 @@ export default function Images() {
 
         {selectedProduct && (
           <span className="muted small">
-            {images.length} image{images.length === 1 ? '' : 's'}
+            <strong
+              style={{
+                color:
+                  images.length >= 4
+                    ? 'var(--teal)'
+                    : images.length === 0
+                    ? 'var(--err)'
+                    : 'var(--warn)',
+                fontWeight: 900,
+              }}
+            >
+              {images.length} / 4 recommended
+            </strong>
+            {images.length >= 4 ? ' ✓ good' : images.length === 0 ? ' — add photos to go live' : ' — add more for a better listing'}
             {variants.length > 0 &&
               ` · ${variants.length} variant${variants.length === 1 ? '' : 's'}`}
           </span>
@@ -632,8 +647,10 @@ export default function Images() {
           </button>
         </form>
       )}
-      {/* 3D Models section */}
-      {productId && (
+      {/* 3D Models section — DISABLED to save AI generation cost.
+          All code below stays intact. Uncomment the {productId && ...} block
+          to restore, and re-enable the route in backend/src/app.js. */}
+      {false && productId && (
         <div
           style={{
             marginTop: 28,

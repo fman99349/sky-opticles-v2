@@ -1,9 +1,11 @@
-const express = require('express');
+﻿const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const pool = require('../db');
 const os = require('os');
+const { requireAdmin } = require('./adminAuth');
+const { requireShopAccess, canAccessShop } = require('../middleware/shopAccess');
 
 const router = express.Router();
 
@@ -32,8 +34,71 @@ const upload = multer({
   },
 });
 
+// ---------------------------------------------------------------------------
+// Shop ownership middleware for 3D model routes
+// ---------------------------------------------------------------------------
+// These routes use :id for two different resources:
+//   /products/:id/3d-models           -> :id is a product id
+//   /3d-models/:id                    -> :id is a model id
+// So we need two access middlewares, each resolving through the parent product.
+
+async function loadProductShopId(productId) {
+  const r = await pool.query('SELECT shop_id FROM products WHERE id = $1', [productId]);
+  return r.rows[0]?.shop_id ?? null;
+}
+
+async function loadModelParentShopId(modelId) {
+  const r = await pool.query(
+    `SELECT p.shop_id
+       FROM product_3d_models m
+       JOIN products p ON p.id = m.product_id
+      WHERE m.id = $1`,
+    [modelId]
+  );
+  return r.rows[0]?.shop_id ?? null;
+}
+
+// Verifies the caller can access the product in :id.
+// Returns 404 (not 403) when it exists but belongs to another shop.
+async function requireProductAccess(req, res, next) {
+  const productId = Number(req.params.id);
+  if (!Number.isInteger(productId) || productId < 1) {
+    return res.status(400).json({ error: 'Invalid product ID.' });
+  }
+  try {
+    const shopId = await loadProductShopId(productId);
+    if (shopId === null || !canAccessShop(req, shopId)) {
+      return res.status(404).json({ error: 'Product not found.' });
+    }
+    req._shopId = shopId;
+    next();
+  } catch (err) {
+    console.error('Product access check failed:', err.message);
+    return res.status(500).json({ error: 'An unexpected server error occurred.' });
+  }
+}
+
+// Verifies the caller can access the 3D model in :id.
+async function requireModelAccess(req, res, next) {
+  const modelId = Number(req.params.id);
+  if (!Number.isInteger(modelId) || modelId < 1) {
+    return res.status(400).json({ error: 'Invalid model ID.' });
+  }
+  try {
+    const shopId = await loadModelParentShopId(modelId);
+    if (shopId === null || !canAccessShop(req, shopId)) {
+      return res.status(404).json({ error: '3D model not found.' });
+    }
+    req._shopId = shopId;
+    next();
+  } catch (err) {
+    console.error('Model access check failed:', err.message);
+    return res.status(500).json({ error: 'An unexpected server error occurred.' });
+  }
+}
+
 // POST /api/products/:id/3d-models
-router.post('/products/:id/3d-models', upload.single('model'), async (req, res) => {
+router.post('/products/:id/3d-models', requireAdmin, requireShopAccess, requireProductAccess, upload.single('model'), async (req, res) => {
   const productId = Number(req.params.id);
   if (!Number.isInteger(productId) || productId < 1) {
     return res.status(400).json({ error: 'Invalid product ID.' });
@@ -71,7 +136,7 @@ router.post('/products/:id/3d-models', upload.single('model'), async (req, res) 
 });
 
 // GET /api/products/:id/3d-models
-router.get('/products/:id/3d-models', async (req, res) => {
+router.get('/products/:id/3d-models', requireAdmin, requireShopAccess, requireProductAccess, async (req, res) => {
   const productId = Number(req.params.id);
   if (!Number.isInteger(productId) || productId < 1) {
     return res.status(400).json({ error: 'Invalid product ID.' });
@@ -90,7 +155,7 @@ router.get('/products/:id/3d-models', async (req, res) => {
 });
 
 // DELETE /api/3d-models/:id
-router.delete('/3d-models/:id', async (req, res) => {
+router.delete('/3d-models/:id', requireAdmin, requireShopAccess, requireModelAccess, async (req, res) => {
   const modelId = Number(req.params.id);
   if (!Number.isInteger(modelId) || modelId < 1) {
     return res.status(400).json({ error: 'Invalid model ID.' });
@@ -129,7 +194,7 @@ router.delete('/3d-models/:id', async (req, res) => {
 //   auto     -> try NanoGPT first, fall back to three.ws on any failure
 //
 // Downloads the GLB, saves it to uploads/models/, and inserts a DB row.
-router.post('/products/:id/generate-3d-model', async (req, res) => {
+router.post('/products/:id/generate-3d-model', requireAdmin, requireShopAccess, requireProductAccess, async (req, res) => {
   const productId = Number(req.params.id);
   if (!Number.isInteger(productId) || productId < 1) {
     return res.status(400).json({ error: 'Invalid product ID.' });
@@ -183,10 +248,10 @@ router.post('/products/:id/generate-3d-model', async (req, res) => {
         console.log(`[3D gen] Trying NanoGPT TRELLIS.2...`);
         glbUrl = await generateViaNanoGPT(imageLocalPath);
         usedProvider = 'nanogpt';
-        console.log(`[3D gen] ✅ NanoGPT produced GLB`);
+        console.log(`[3D gen] âœ… NanoGPT produced GLB`);
       } catch (err) {
         console.warn(`[3D gen] NanoGPT failed: ${err.message}`);
-        if (provider === 'nanogpt') throw err; // explicit request — don't fall back
+        if (provider === 'nanogpt') throw err; // explicit request â€” don't fall back
       }
     }
 
@@ -194,7 +259,7 @@ router.post('/products/:id/generate-3d-model', async (req, res) => {
       console.log(`[3D gen] Trying three.ws free lane...`);
       glbUrl = await generateViaThreeWS(imageLocalPath, productName);
       usedProvider = 'threews';
-      console.log(`[3D gen] ✅ three.ws produced GLB`);
+      console.log(`[3D gen] âœ… three.ws produced GLB`);
     }
 
     if (!glbUrl) {
@@ -224,14 +289,14 @@ router.post('/products/:id/generate-3d-model', async (req, res) => {
       [productId, modelUrl, glbBuffer.length]
     );
 
-    console.log(`[3D gen] ✅ Saved: ${modelUrl}`);
+    console.log(`[3D gen] âœ… Saved: ${modelUrl}`);
     res.status(201).json({
       message: `3D model generated via ${usedProvider}.`,
       provider: usedProvider,
       data: insertRes.rows[0],
     });
   } catch (error) {
-    console.error('[3D gen] ❌', error.message);
+    console.error('[3D gen] âŒ', error.message);
     res.status(500).json({ error: error.message || 'Could not generate 3D model.' });
   }
 });
@@ -279,7 +344,7 @@ async function generateViaNanoGPT(imageLocalPath) {
   for (let i = 0; i < 60; i++) {
     await new Promise((r) => setTimeout(r, 5000));
 
-    // Try both possible polling hosts — one will work
+    // Try both possible polling hosts â€” one will work
     let pollRes = await fetch(`https://nano-gpt.com/api/generate-video/${runId}`, {
       headers: { Authorization: `Bearer ${apiKey}` },
     });

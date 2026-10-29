@@ -476,7 +476,7 @@ function ProductModal({
                     disabled={uploading}
                   >
                     <Upload size={12} style={{ marginRight: 4, verticalAlign: '-2px' }} />
-                    {uploading ? 'Uploading…' : 'Upload'}
+                    {uploading ? 'Uploading...' : 'Upload'}
                   </button>
                 </div>
               )}
@@ -499,7 +499,7 @@ function ProductModal({
                 />
 
                 {loadingImages ? (
-                  <p className="muted small">Loading images…</p>
+                  <p className="muted small">Loading images...</p>
                 ) : images.length === 0 ? (
                   <p className="muted small">No images yet.</p>
                 ) : (
@@ -570,8 +570,8 @@ function ProductModal({
             <button type="submit" disabled={saving || noCategories}>
               {saving
                 ? isEdit
-                  ? 'Saving…'
-                  : 'Creating…'
+                  ? 'Saving...'
+                  : 'Creating...'
                 : isEdit
                 ? 'Save changes'
                 : 'Create product'}
@@ -605,7 +605,7 @@ export default function Products() {
     setListError('');
     try {
       const [p, c, b, t] = await Promise.all([
-        api.listProducts({ limit: 100 }),
+        api.listMyProducts({ limit: 100 }),
         api.listCategories(),
         api.listBrands(),
         api.listProductTypes(),
@@ -673,7 +673,7 @@ export default function Products() {
           <h2 className="erp-page-title">Products</h2>
           <p className="muted small">
             {loading
-              ? 'Loading catalogue…'
+              ? 'Loading catalogue...'
               : `${products.length} active product${products.length === 1 ? '' : 's'}`}
           </p>
         </div>
@@ -686,7 +686,7 @@ export default function Products() {
             type="button"
           >
             <RefreshCw size={14} />
-            <span>{loading ? 'Refreshing…' : 'Refresh'}</span>
+            <span>{loading ? 'Refreshing...' : 'Refresh'}</span>
           </button>
 
           <button className="primary" onClick={openCreate} type="button">
@@ -705,7 +705,7 @@ export default function Products() {
       <div className="erp-table-wrap">
         {loading && products.length === 0 ? (
           <div className="erp-empty">
-            <p className="muted">Loading products…</p>
+            <p className="muted">Loading products...</p>
           </div>
         ) : products.length === 0 ? (
           <div className="erp-empty">
@@ -734,7 +734,32 @@ export default function Products() {
                 <tr key={p.id}>
                   <td className="erp-cell-muted">#{p.id}</td>
                   <td>
-                    <div className="erp-cell-strong">{p.name}</div>
+                    <div className="erp-cell-strong" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {p.name}
+                      {typeof p.image_count === 'number' && p.image_count < 4 && (
+                        <span
+                          style={{
+                            fontSize: 9,
+                            fontWeight: 900,
+                            letterSpacing: '0.06em',
+                            padding: '2px 6px',
+                            borderRadius: 3,
+                            color: p.image_count === 0 ? 'var(--err)' : 'var(--warn)',
+                            background: p.image_count === 0
+                              ? 'rgba(192,57,43,0.08)'
+                              : 'rgba(201,150,46,0.10)',
+                            border: `1px solid ${
+                              p.image_count === 0
+                                ? 'rgba(192,57,43,0.3)'
+                                : 'rgba(201,150,46,0.35)'
+                            }`,
+                          }}
+                          title={`Only ${p.image_count} image${p.image_count === 1 ? '' : 's'} uploaded - recommend 4 or more`}
+                        >
+                          IMG {p.image_count}
+                        </span>
+                      )}
+                    </div>
                     {p.description && (
                       <div className="erp-cell-sub" title={p.description}>
                         {p.description}

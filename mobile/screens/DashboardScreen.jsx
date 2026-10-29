@@ -14,6 +14,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 
 import { useAuth } from '../auth/AuthContext';
 import { useCart } from '../cart/CartContext';
@@ -29,6 +30,7 @@ import {
   fetchCategories,
   listMyOrders,
   getMyOrder,
+  initiatePayfastPayment,
   listMyAddresses,
   createAddress,
   updateAddress,
@@ -52,6 +54,9 @@ import CheckoutScreen from './CheckoutScreen';
 import AddressModal from '../components/AddressModal';
 import { useNotifications } from '../notifications/NotificationContext';
 import { dashStyles as d } from './dashboardStyles';
+import { shopStyles as s } from './shopStyles';
+import ShopListScreen from './ShopListScreen';
+import ShopDetailScreen from './ShopDetailScreen';
 
 const NAVY = '#101D2C';
 const GOLD = '#D7B987';
@@ -267,6 +272,7 @@ function OrdersTab({ user, onGoToShop }) {
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [openOrderId, setOpenOrderId] = useState(null);
+  const [payingOrderId, setPayingOrderId] = useState(null);
 
   const load = async (isRefresh) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
@@ -284,6 +290,77 @@ function OrdersTab({ user, onGoToShop }) {
 
   useEffect(() => { load(false); }, []);
   const firstName = user && user.name ? user.name.split(' ')[0] : '';
+
+  const pollForPaid = (orderId, orderNumber, maxAttempts = 75, intervalMs = 4000) =>
+    new Promise((resolve, reject) => {
+      let attempts = 0;
+      const poll = setInterval(async () => {
+        attempts++;
+        try {
+          const r = await getMyOrder(token, orderId);
+          if (r?.data?.payment_status === 'paid') {
+            clearInterval(poll);
+            resolve(true);
+            return;
+          }
+        } catch {
+          // transient errors while polling — ignore
+        }
+        if (attempts >= maxAttempts) {
+          clearInterval(poll);
+          resolve(false);
+        }
+      }, intervalMs);
+    });
+
+  const payOrder = async (order) => {
+    if (payingOrderId) return;
+    setPayingOrderId(order.id);
+
+    try {
+      // 1. Ask backend to create the PayFast session
+      const result = await initiatePayfastPayment(token, order.id);
+      const url = result?.data?.redirect_url;
+
+      if (!url) {
+        Alert.alert('Payment error', 'Could not get a payment link. Please try again.');
+        setPayingOrderId(null);
+        return;
+      }
+
+      // 2. Open the PayFast page in an in-app browser (Custom Tab / SFSafariVC).
+      //    The promise resolves when the user dismisses the browser.
+      const browserResult = await WebBrowser.openBrowserAsync(url, {
+        // Brand the browser chrome to match the app
+        toolbarColor: '#101D2C',
+        controlsColor: '#D7B987',
+        // Force a close button so the user can exit even if the page doesn't
+        enableBarCollapsing: true,
+        showTitle: true,
+        // iOS: dismisses the browser on this URL — the "Payment received"
+        // thank-you page from our backend. Nice UX touch.
+        dismissButtonStyle: 'close',
+      });
+
+      // 3. Whether the user paid or cancelled, poll the backend.
+      //    If the ITN already fired during payment, first poll succeeds instantly.
+      const paid = await pollForPaid(order.id, order.order_number);
+
+      if (paid) {
+        Alert.alert('Payment received', `Order ${order.order_number} is confirmed.`);
+        await load(true);
+      } else {
+        Alert.alert(
+          'Still checking',
+          'We didn\'t see your payment yet. If you paid, pull down to refresh in a minute.'
+        );
+      }
+    } catch (e) {
+      Alert.alert('Payment error', e.message || 'Could not start payment.');
+    } finally {
+      setPayingOrderId(null);
+    }
+  };
 
   if (loading) {
     return <View style={d.shopStateBox}><ActivityIndicator size="large" color={TEAL} /><Text style={d.shopStateTitle}>Loading your orders…</Text></View>;
@@ -309,19 +386,47 @@ function OrdersTab({ user, onGoToShop }) {
               <View style={{ marginTop: 20, width: 220 }}><PrimaryButton title="START SHOPPING" onPress={onGoToShop} /></View>
             </View>
           ) : (
-            orders.map((o) => (
-              <Pressable key={o.id} onPress={() => setOpenOrderId(o.id)} style={({ pressed }) => ({ backgroundColor: WHITE, borderWidth: 1, borderColor: BORDER, borderRadius: 6, padding: 14, marginBottom: 10, opacity: pressed ? 0.85 : 1 })}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                  <Text style={{ color: INK, fontSize: 13, fontWeight: '900', letterSpacing: 0.4 }}>{o.order_number}</Text>
-                  <Text style={{ color: INK, fontSize: 14, fontWeight: '900' }}>{price(o.total, currency)}</Text>
+            orders.map((o) => {
+              const isPaying = payingOrderId === o.id;
+              const isUnpaid = o.payment_status === 'unpaid';
+              const isPayfastEligible = isUnpaid && (o.currency === 'ZAR' || !o.currency);
+
+              return (
+                <View key={o.id} style={{ backgroundColor: WHITE, borderWidth: 1, borderColor: BORDER, borderRadius: 6, marginBottom: 10, overflow: 'hidden' }}>
+                  <Pressable
+                    onPress={() => setOpenOrderId(o.id)}
+                    style={({ pressed }) => ({ padding: 14, opacity: pressed ? 0.85 : 1 })}
+                  >
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <Text style={{ color: INK, fontSize: 13, fontWeight: '900', letterSpacing: 0.4 }}>{o.order_number}</Text>
+                      <Text style={{ color: INK, fontSize: 14, fontWeight: '900' }}>{price(o.total, currency)}</Text>
+                    </View>
+                    <Text style={{ color: MUTED, fontSize: 11, marginBottom: 10 }}>{formatOrderDate(o.created_at)}</Text>
+                    <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                      <OrderPill kind="pay" value={o.payment_status} />
+                      <OrderPill kind="ful" value={o.fulfillment_status} />
+                    </View>
+                  </Pressable>
+
+                  {isPayfastEligible && (
+                    <Pressable
+                      onPress={() => payOrder(o)}
+                      disabled={!!payingOrderId}
+                      style={({ pressed }) => ({
+                        backgroundColor: isPaying ? '#B8A06B' : GOLD,
+                        paddingVertical: 14,
+                        alignItems: 'center',
+                        opacity: pressed || (payingOrderId && !isPaying) ? 0.7 : 1,
+                      })}
+                    >
+                      <Text style={{ color: NAVY, fontSize: 12, fontWeight: '900', letterSpacing: 1.4 }}>
+                        {isPaying ? 'WAITING FOR PAYMENT…' : 'PAY NOW'}
+                      </Text>
+                    </Pressable>
+                  )}
                 </View>
-                <Text style={{ color: MUTED, fontSize: 11, marginBottom: 10 }}>{formatOrderDate(o.created_at)}</Text>
-                <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-                  <OrderPill kind="pay" value={o.payment_status} />
-                  <OrderPill kind="ful" value={o.fulfillment_status} />
-                </View>
-              </Pressable>
-            ))
+              );
+            })
           )}
         </View>
       </ScrollView>
@@ -330,7 +435,7 @@ function OrdersTab({ user, onGoToShop }) {
   );
 }
 
-function ShopTab({ products, categories, loading, error, onRetry, onOpenProduct, onAddToCart }) {
+function ProductsView({ products, categories, loading, error, onRetry, onOpenProduct, onAddToCart }) {
   const [query, setQuery] = useState('');
   const [activeParentId, setActiveParentId] = useState('all');
   const [activeChildId, setActiveChildId] = useState('all');
@@ -405,6 +510,55 @@ function ShopTab({ products, categories, loading, error, onRetry, onOpenProduct,
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={<View style={d.shopStateBox}><Text style={d.shopStateTitle}>Nothing found just yet</Text><Text style={d.shopStateText}>Try a different search or filter.</Text></View>}
       />
+    </View>
+  );
+}
+
+function ShopTab({ products, categories, loading, error, onRetry, onOpenProduct, onAddToCart }) {
+  const [subTab, setSubTab] = useState('products');
+  const [selectedShopSlug, setSelectedShopSlug] = useState(null);
+
+  if (selectedShopSlug) {
+    return (
+      <ShopDetailScreen
+        slug={selectedShopSlug}
+        onBack={() => setSelectedShopSlug(null)}
+        onOpenProduct={onOpenProduct}
+        onAddToCart={onAddToCart}
+      />
+    );
+  }
+
+  return (
+    <View style={{ flex: 1 }}>
+      <View style={s.segmentRow}>
+        <Pressable
+          onPress={() => setSubTab('products')}
+          style={[s.segmentBtn, subTab === 'products' && s.segmentBtnActive]}
+        >
+          <Text style={[s.segmentText, subTab === 'products' && s.segmentTextActive]}>PRODUCTS</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => setSubTab('shops')}
+          style={[s.segmentBtn, subTab === 'shops' && s.segmentBtnActive]}
+        >
+          <Text style={[s.segmentText, subTab === 'shops' && s.segmentTextActive]}>SHOPS</Text>
+        </Pressable>
+      </View>
+
+      {subTab === 'products' ? (
+        <ProductsView
+          products={products}
+          categories={categories}
+          loading={loading}
+          error={error}
+          onRetry={onRetry}
+          onOpenProduct={onOpenProduct}
+          onAddToCart={onAddToCart}
+        />
+      ) : (
+        <ShopListScreen onOpenShop={setSelectedShopSlug} />
+      )}
     </View>
   );
 }

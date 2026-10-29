@@ -1,7 +1,23 @@
 // Single place where the mobile app talks to the backend.
 // Keep this in sync with the desktop admin's admin/src/api/client.js base URL.
 
-export const API_URL = 'http://10.195.227.20:3000/api';
+// The API base URL is read from EXPO_PUBLIC_API_URL at build time.
+// - In dev: set it in mobile/.env (your laptop's LAN IP)
+// - In production: set it in the EAS build profile or a production .env
+//
+// Fallback keeps the app working if the env var isn't set (e.g. fresh clone
+// without an .env file — you'll see a clear warning in Metro's terminal).
+const fromEnv = process.env.EXPO_PUBLIC_API_URL;
+const FALLBACK = 'http://localhost:3000/api';
+
+if (!fromEnv) {
+  console.warn(
+    '[api] EXPO_PUBLIC_API_URL is not set. Falling back to localhost — this will NOT work on a physical device. ' +
+    'Create mobile/.env with EXPO_PUBLIC_API_URL=http://<10.54.45.119>:3000/api'
+  );
+}
+
+export const API_URL = fromEnv || FALLBACK;
 
 async function request(path, options = {}) {
   const url = `${API_URL}${path}`;
@@ -197,6 +213,17 @@ export async function getMyOrder(token, id) {
 
 
 
+// Initiate a PayFast payment for an existing order.
+// Returns { data: { redirect_url, order_id, order_number, amount, currency } }.
+export async function initiatePayfastPayment(token, orderId) {
+  if (!token) throw new Error('Please sign in to pay.');
+  return request(`/orders/${orderId}/pay/payfast`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+
 // --- Account profile ---
 // Updates any subset of { name, phone, email } on the signed-in customer's
 // account. The backend validates each field independently and returns the
@@ -286,4 +313,42 @@ export async function fetchProduct3DModel(productId, variantId = null) {
   const qs = variantId ? `?variantId=${variantId}` : '';
   const result = await request(`/products/${productId}/3d-models${qs}`);
   return result.data?.[0] || null;
+}
+
+
+
+// --- Marketplace: shops ---
+export async function fetchShopTypes() {
+  const result = await request('/shops/meta/types');
+  return result.data || [];
+}
+
+export async function fetchShops(params = {}) {
+  const qs = new URLSearchParams();
+  if (params.shop_type) qs.append('shop_type', params.shop_type);
+  if (params.city) qs.append('city', params.city);
+  if (params.product_type) qs.append('product_type', params.product_type);
+  if (params.search) qs.append('search', params.search);
+  if (params.page) qs.append('page', params.page);
+  if (params.limit) qs.append('limit', params.limit);
+  const q = qs.toString();
+  const result = await request(`/shops${q ? '?' + q : ''}`);
+  return { data: result.data || [], pagination: result.pagination };
+}
+
+export async function fetchShopDetail(slug) {
+  const result = await request(`/shops/${encodeURIComponent(slug)}`);
+  return result.data;
+}
+
+export async function fetchShopProducts(slug, currency = 'ZAR', filters = {}) {
+  const qs = new URLSearchParams();
+  qs.append('currency', currency);
+  if (filters.categoryId) qs.append('categoryId', filters.categoryId);
+  if (filters.type) qs.append('type', filters.type);
+  if (filters.search) qs.append('search', filters.search);
+  if (filters.page) qs.append('page', filters.page);
+  if (filters.limit) qs.append('limit', filters.limit);
+  const result = await request(`/shops/${encodeURIComponent(slug)}/products?${qs.toString()}`);
+  return { data: result.data || [], pagination: result.pagination };
 }

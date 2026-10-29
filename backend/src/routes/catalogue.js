@@ -1,8 +1,30 @@
 const express = require('express');
 const { toAbsoluteUrl } = require('../utils/url');
 const pool = require('../db');
+const { requireAdmin, requirePlatformOwner } = require('./adminAuth');
+const {
+  requireShopAccess,
+  canAccessShop,
+} = require('../middleware/shopAccess');
 
 const router = express.Router();
+
+// Loads the shop_id of a product. Returns null if the product doesn't exist.
+// Used by PATCH/DELETE to check access before mutating.
+async function loadProductShopId(productId) {
+  const r = await pool.query('SELECT shop_id FROM products WHERE id = $1', [productId]);
+  return r.rows[0]?.shop_id ?? null;
+}
+
+// Verifies a product_type is declared by the given shop.
+// Returns true if permitted, false otherwise.
+async function shopAllowsProductType(shopId, productType) {
+  const r = await pool.query(
+    'SELECT 1 FROM shop_product_types WHERE shop_id = $1 AND product_type = $2',
+    [shopId, productType]
+  );
+  return r.rows.length > 0;
+}
 
 
 // Helper: Fetch exchange rate for a given currency
@@ -72,7 +94,7 @@ router.get('/categories', async (req, res) => {
 });
 
 // POST /api/categories
-router.post('/categories', async (req, res) => {
+router.post('/categories', requireAdmin, requirePlatformOwner, async (req, res) => {
   const { name, description, parentId } = req.body;
 
   if (typeof name !== 'string' || !name.trim() || name.trim().length > 100) {
@@ -125,7 +147,7 @@ router.get('/brands', async (req, res) => {
 });
 
 // POST /api/brands
-router.post('/brands', async (req, res) => {
+router.post('/brands', requireAdmin, requirePlatformOwner, async (req, res) => {
   const { name } = req.body;
 
   if (typeof name !== 'string' || !name.trim() || name.trim().length > 120) {
@@ -171,7 +193,18 @@ router.get('/products', async (req, res) => {
     });
   }
 
-  const conditions = ["p.status = 'active'"];
+  const conditions = [
+    "p.status = 'active'",
+    `(
+       s.is_platform_owned = TRUE
+       OR (
+         s.status = 'active' AND (
+           (s.trial_ends_at IS NOT NULL AND s.trial_ends_at > NOW())
+           OR (s.paid_until IS NOT NULL AND s.paid_until > NOW())
+         )
+       )
+     )`,
+  ];
   const values = [];
 
   function addFilter(sql, value) {
@@ -243,6 +276,7 @@ router.get('/products', async (req, res) => {
     const countResult = await pool.query(
       `SELECT COUNT(*)::int AS total
        FROM products p
+       JOIN shops s ON s.id = p.shop_id
        WHERE ${whereClause}`,
       values
     );
@@ -263,6 +297,9 @@ router.get('/products', async (req, res) => {
          p.has_configurator,
          p.condition,
          p.created_at,
+         p.shop_id,
+         s.name AS shop_name,
+         s.slug AS shop_slug,
          c.id AS category_id,
          c.name AS category_name,
          b.id AS brand_id,
@@ -275,6 +312,7 @@ router.get('/products', async (req, res) => {
            LIMIT 1
          ) AS primary_image
        FROM products p
+       JOIN shops s ON s.id = p.shop_id
        JOIN categories c ON c.id = p.category_id
        LEFT JOIN brands b ON b.id = p.brand_id
        LEFT JOIN product_currency_prices pcp ON pcp.product_id = p.id AND pcp.currency_code = $${listValues.length + 1}
@@ -321,12 +359,24 @@ router.get('/products/:id', async (req, res) => {
          p.*,
          COALESCE(pcp.price, p.price * ${rate})::numeric(12,2) AS price,
          c.name AS category_name,
-         b.name AS brand_name
+         b.name AS brand_name,
+         s.name AS shop_name,
+         s.slug AS shop_slug
        FROM products p
+       JOIN shops s ON s.id = p.shop_id
        JOIN categories c ON c.id = p.category_id
        LEFT JOIN brands b ON b.id = p.brand_id
        LEFT JOIN product_currency_prices pcp ON pcp.product_id = p.id AND pcp.currency_code = $2
-       WHERE p.id = $1`,
+       WHERE p.id = $1
+         AND (
+           s.is_platform_owned = TRUE
+           OR (
+             s.status = 'active' AND (
+               (s.trial_ends_at IS NOT NULL AND s.trial_ends_at > NOW())
+               OR (s.paid_until IS NOT NULL AND s.paid_until > NOW())
+             )
+           )
+         )`,
       [Number(req.params.id), currency]
     );
 
@@ -416,8 +466,9 @@ router.get('/products/:id', async (req, res) => {
 
 
 // POST /api/products
-router.post('/products', async (req, res) => {
-    const {
+// POST /api/products
+router.post('/products', requireAdmin, requireShopAccess, async (req, res) => {
+  const {
     name,
     categoryId,
     brandId,
@@ -427,6 +478,7 @@ router.post('/products', async (req, res) => {
     status,
     hasConfigurator,
     condition = 'new',
+    shopId,
   } = req.body;
 
   if (typeof name !== 'string' || !name.trim() || name.trim().length > 200) {
@@ -448,7 +500,7 @@ router.post('/products', async (req, res) => {
     return res.status(400).json({ error: 'Invalid brandId.' });
   }
 
-    if (
+  if (
     typeof productType !== 'string' ||
     !productType.trim() ||
     productType.trim().length > 50
@@ -468,9 +520,6 @@ router.post('/products', async (req, res) => {
     return res.status(400).json({ error: 'condition must be new or used.' });
   }
 
-
-
-
   if (
     price === undefined ||
     price === null ||
@@ -484,25 +533,64 @@ router.post('/products', async (req, res) => {
   }
 
   const productStatus = status || 'draft';
-
   if (!['draft', 'active', 'archived'].includes(productStatus)) {
     return res.status(400).json({ error: 'Invalid status.' });
   }
 
   const slug = makeSlug(name);
-
   if (!slug) {
     return res.status(400).json({
       error: 'Name must contain letters or numbers.',
     });
   }
 
+  // Resolve which shop this product belongs to.
+  let targetShopId;
+  if (req.admin.is_platform_owner) {
+    if (shopId === undefined || shopId === null || shopId === '') {
+      // Default to the platform shop so the current admin UI keeps working
+      // without sending shopId. Platform owner can override by passing shopId.
+      const platformShop = req.admin.shops.find((s) => s.is_platform_owned);
+      if (!platformShop) {
+        return res.status(400).json({
+          error: 'shopId is required (no platform shop found).',
+        });
+      }
+      targetShopId = Number(platformShop.id);
+    } else {
+      targetShopId = Number(shopId);
+      if (!Number.isInteger(targetShopId) || targetShopId <= 0) {
+        return res.status(400).json({ error: 'Invalid shopId.' });
+      }
+      const shopExists = req.admin.shops.some(
+        (s) => Number(s.id) === targetShopId
+      );
+      if (!shopExists) {
+        return res.status(400).json({ error: 'shopId does not exist.' });
+      }
+    }
+  } else {
+    targetShopId = Number(req.shop.id);
+    if (
+      shopId !== undefined &&
+      shopId !== null &&
+      shopId !== '' &&
+      Number(shopId) !== targetShopId
+    ) {
+      return res.status(403).json({
+        error: 'Cannot create a product for another shop.',
+      });
+    }
+  }
+
+  // Product types are no longer restricted per shop.
+
   try {
-        const result = await pool.query(
+    const result = await pool.query(
       `INSERT INTO products
          (category_id, brand_id, name, slug, description,
-          product_type, price, status, has_configurator, condition)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          product_type, price, status, has_configurator, condition, shop_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING *`,
       [
         Number(categoryId),
@@ -515,6 +603,7 @@ router.post('/products', async (req, res) => {
         productStatus,
         hasConfigurator === undefined ? true : hasConfigurator,
         condition,
+        targetShopId,
       ]
     );
 
@@ -526,18 +615,55 @@ router.post('/products', async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // ---------------------------------------------------------------------------
 // PATCH /api/products/:id
-// Update any of: name, description, price, categoryId, brandId, productType,
+// Updat
+// e any of: name, description, price, categoryId, brandId, productType,
 // status. Slug is regenerated if the name changes. Validation mirrors the
 // POST handler so the two stay consistent.
 // ---------------------------------------------------------------------------
-router.patch('/products/:id', async (req, res) => {
+router.patch('/products/:id', requireAdmin, requireShopAccess, async (req, res) => {
   if (!isPositiveInteger(req.params.id)) {
     return res.status(400).json({ error: 'Invalid product ID.' });
   }
 
-   const {
+  const productId = Number(req.params.id);
+
+  // Load the existing product so we know the current name and shop before
+  // deciding whether to regenerate the slug and whether access is allowed.
+  let existing;
+  try {
+    const r = await pool.query('SELECT * FROM products WHERE id = $1', [productId]);
+    if (r.rows.length === 0) {
+      return res.status(404).json({ error: 'Product not found.' });
+    }
+    existing = r.rows[0];
+  } catch (error) {
+    return handleError(res, error, 'Load product failed');
+  }
+
+  // Access check: seller can only touch their own shop's products.
+  // Return 404 (not 403) so we don't leak existence of another shop's product.
+  if (!canAccessShop(req, existing.shop_id)) {
+    return res.status(404).json({ error: 'Product not found.' });
+  }
+
+  const {
     name,
     categoryId,
     brandId,
@@ -549,27 +675,10 @@ router.patch('/products/:id', async (req, res) => {
     condition,
   } = req.body;
 
-  // Load the existing product so we know the current name before deciding
-  // whether to regenerate the slug.
-  let existing;
-  try {
-    const r = await pool.query('SELECT * FROM products WHERE id = $1', [
-      Number(req.params.id),
-    ]);
-    if (r.rows.length === 0) {
-      return res.status(404).json({ error: 'Product not found.' });
-    }
-    existing = r.rows[0];
-  } catch (error) {
-    return handleError(res, error, 'Load product failed');
-  }
-
-  // Validate only the fields that were provided. Undefined fields are left
-  // untouched.
   const updates = {};
   const values = [];
 
-   if (productType !== undefined) {
+  if (productType !== undefined) {
     if (
       typeof productType !== 'string' ||
       !productType.trim() ||
@@ -579,6 +688,7 @@ router.patch('/products/:id', async (req, res) => {
         error: 'productType must be a non-empty string of at most 50 characters.',
       });
     }
+    // Product types are no longer restricted per shop.
     updates.product_type = productType.trim();
   }
 
@@ -591,12 +701,13 @@ router.patch('/products/:id', async (req, res) => {
     updates.has_configurator = hasConfigurator;
   }
 
-    if (condition !== undefined) {
+  if (condition !== undefined) {
     if (!['new', 'used'].includes(condition)) {
       return res.status(400).json({ error: 'condition must be new or used.' });
     }
     updates.condition = condition;
   }
+
   if (categoryId !== undefined) {
     if (!isPositiveInteger(categoryId)) {
       return res.status(400).json({ error: 'Invalid categoryId.' });
@@ -623,8 +734,6 @@ router.patch('/products/:id', async (req, res) => {
         ? description.trim()
         : null;
   }
-
-
 
   if (price !== undefined) {
     if (
@@ -667,10 +776,8 @@ router.patch('/products/:id', async (req, res) => {
     values.push(val);
     setClauses.push(`${col} = $${values.length}`);
   }
-  // updated_at exists on products; bump it. (No trigger does this today.)
   setClauses.push('updated_at = NOW()');
-
-  values.push(Number(req.params.id));
+  values.push(productId);
 
   try {
     const result = await pool.query(
@@ -687,18 +794,56 @@ router.patch('/products/:id', async (req, res) => {
   }
 });
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // ---------------------------------------------------------------------------
 // DELETE /api/products/:id
 // Deletes the product and its variants (variants FK is RESTRICT, so we must
 // remove them first). Images cascade automatically, but their files on disk
-// do not — we clean those up after commit.
+// do not â€” we clean those up after commit.
 // ---------------------------------------------------------------------------
-router.delete('/products/:id', async (req, res) => {
+router.delete('/products/:id', requireAdmin, requireShopAccess, async (req, res) => {
   if (!isPositiveInteger(req.params.id)) {
     return res.status(400).json({ error: 'Invalid product ID.' });
   }
 
   const productId = Number(req.params.id);
+
+  // Access check: load shop_id first, before doing anything destructive.
+  const shopId = await loadProductShopId(productId);
+  if (shopId === null) {
+    return res.status(404).json({ error: 'Product not found.' });
+  }
+  if (!canAccessShop(req, shopId)) {
+    return res.status(404).json({ error: 'Product not found.' });
+  }
 
   const client = await pool.connect();
   let tx = false;
@@ -708,7 +853,6 @@ router.delete('/products/:id', async (req, res) => {
     await client.query('BEGIN');
     tx = true;
 
-    // Snapshot image URLs so we can delete the files after commit.
     const imgRes = await client.query(
       'SELECT image_url FROM product_images WHERE product_id = $1',
       [productId]
@@ -719,14 +863,11 @@ router.delete('/products/:id', async (req, res) => {
         (u) => typeof u === 'string' && u.startsWith('/uploads/products/')
       );
 
-    // Variants have ON DELETE RESTRICT — delete them explicitly first.
     await client.query(
       'DELETE FROM product_variants WHERE product_id = $1',
       [productId]
     );
 
-    // Images cascade with the product, but delete explicitly anyway so the
-    // intent is visible in the code.
     await client.query(
       'DELETE FROM product_images WHERE product_id = $1',
       [productId]
@@ -746,8 +887,6 @@ router.delete('/products/:id', async (req, res) => {
     await client.query('COMMIT');
     tx = false;
 
-    // Best-effort disk cleanup. Files outside uploads/products (external URLs)
-    // are left untouched.
     const path = require('path');
     const fs = require('fs');
     const uploadsDir = path.join(
@@ -775,11 +914,38 @@ router.delete('/products/:id', async (req, res) => {
   }
 });
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // ---------------------------------------------------------------------------
 // PATCH /api/categories/:id
 // Update name, description, or is_active. Slug regenerates if name changes.
 // ---------------------------------------------------------------------------
-router.patch('/categories/:id', async (req, res) => {
+router.patch('/categories/:id', requireAdmin, requirePlatformOwner, async (req, res) => {
   if (!isPositiveInteger(req.params.id)) {
     return res.status(400).json({ error: 'Invalid category ID.' });
   }
@@ -804,7 +970,7 @@ router.patch('/categories/:id', async (req, res) => {
 
   if (name !== undefined) {
     if (typeof name !== 'string' || !name.trim() || name.trim().length > 100) {
-      return res.status(400).json({ error: 'Name must be 1–100 chars.' });
+      return res.status(400).json({ error: 'Name must be 1â€“100 chars.' });
     }
     updates.name = name.trim();
   }
@@ -871,7 +1037,7 @@ router.patch('/categories/:id', async (req, res) => {
 // DELETE /api/categories/:id
 // Fails with 409 if any product still references this category.
 // ---------------------------------------------------------------------------
-router.delete('/categories/:id', async (req, res) => {
+router.delete('/categories/:id', requireAdmin, requirePlatformOwner, async (req, res) => {
   if (!isPositiveInteger(req.params.id)) {
     return res.status(400).json({ error: 'Invalid category ID.' });
   }
@@ -889,7 +1055,7 @@ router.delete('/categories/:id', async (req, res) => {
     if (error.code === '23503') {
       return res.status(409).json({
         error:
-          'Cannot delete this category — it is still used by one or more products. Deactivate it instead.',
+          'Cannot delete this category â€” it is still used by one or more products. Deactivate it instead.',
       });
     }
     handleError(res, error, 'Delete category failed');
@@ -900,7 +1066,7 @@ router.delete('/categories/:id', async (req, res) => {
 // PATCH /api/brands/:id
 // Update name or is_active. Slug regenerates if name changes.
 // ---------------------------------------------------------------------------
-router.patch('/brands/:id', async (req, res) => {
+router.patch('/brands/:id', requireAdmin, requirePlatformOwner, async (req, res) => {
   if (!isPositiveInteger(req.params.id)) {
     return res.status(400).json({ error: 'Invalid brand ID.' });
   }
@@ -925,7 +1091,7 @@ router.patch('/brands/:id', async (req, res) => {
 
   if (name !== undefined) {
     if (typeof name !== 'string' || !name.trim() || name.trim().length > 120) {
-      return res.status(400).json({ error: 'Name must be 1–120 chars.' });
+      return res.status(400).json({ error: 'Name must be 1â€“120 chars.' });
     }
     updates.name = name.trim();
   }
@@ -973,11 +1139,47 @@ router.patch('/brands/:id', async (req, res) => {
   }
 });
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // ---------------------------------------------------------------------------
 // DELETE /api/brands/:id
 // Fails with 409 if any product still references this brand.
 // ---------------------------------------------------------------------------
-router.delete('/brands/:id', async (req, res) => {
+router.delete('/brands/:id', requireAdmin, requirePlatformOwner, async (req, res) => {
   if (!isPositiveInteger(req.params.id)) {
     return res.status(400).json({ error: 'Invalid brand ID.' });
   }
@@ -995,7 +1197,7 @@ router.delete('/brands/:id', async (req, res) => {
     if (error.code === '23503') {
       return res.status(409).json({
         error:
-          'Cannot delete this brand — it is still used by one or more products. Deactivate it instead.',
+          'Cannot delete this brand â€” it is still used by one or more products. Deactivate it instead.',
       });
     }
     handleError(res, error, 'Delete brand failed');

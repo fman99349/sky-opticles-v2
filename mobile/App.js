@@ -43,6 +43,7 @@ import { HomeIcon, CartIcon } from './components/Icons';
 import DetailScreen from './screens/DetailScreen';
 import LensWizard from './screens/LensWizard';
 import VariantPicker from './components/VariantPicker';
+import IntroScreen from './screens/IntroScreen';
 
 const C = {
   navy: '#101D2C',
@@ -388,13 +389,21 @@ function RootApp() {
   return <WelcomeScreen onBrowse={() => setScreen('catalogue')} onSignIn={() => setScreen('signin')} />;
 }
 
+function AppWithIntro() {
+  const [showIntro, setShowIntro] = useState(true);
+  if (showIntro) {
+    return <IntroScreen onDone={() => setShowIntro(false)} />;
+  }
+  return <RootApp />;
+}
+
 export default function App() {
   return (
     <AuthProvider>
       <NotificationProvider>
         <CurrencyProvider>
           <CartProvider>
-            <RootApp />
+            <AppWithIntro />
           </CartProvider>
         </CurrencyProvider>
       </NotificationProvider>

@@ -7,6 +7,9 @@ const pool = new Pool({
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   connectionTimeoutMillis: 5000,
+  max: 20,                          // ← add
+  idleTimeoutMillis: 30000,         // ← add
+  connectionTimeoutMillis: 5000,    // ← add
 });
 
 pool.on('error', (error) => {
@@ -14,3 +17,7 @@ pool.on('error', (error) => {
 });
 
 module.exports = pool;
+
+pool.on('error', (err) => {
+  console.error('Unexpected DB pool error:', err.message);
+});
