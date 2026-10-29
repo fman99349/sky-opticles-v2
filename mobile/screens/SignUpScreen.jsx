@@ -11,6 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { authStyles as a } from './authStyles';
 import { useAuth } from '../auth/AuthContext';
 
@@ -23,6 +24,11 @@ export default function SignUpScreen({ onBack, onGoToSignIn }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
+  
+  // New state for toggling password visibility
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -82,7 +88,7 @@ export default function SignUpScreen({ onBack, onGoToSignIn }) {
           contentContainerStyle={a.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
-          <Text style={a.eyebrow}>JOIN SKY OPTICLES</Text>
+          <Text style={a.eyebrow}>JOIN DIAMOND DEE</Text>
           <Text style={a.title}>Create your account</Text>
           <Text style={a.subtitle}>
             Save your details for a faster checkout and to track your orders.
@@ -126,16 +132,29 @@ export default function SignUpScreen({ onBack, onGoToSignIn }) {
 
           <View style={a.field}>
             <Text style={a.label}>PASSWORD</Text>
-            <TextInput
-              value={password}
-              onChangeText={setPassword}
-              placeholder={`At least ${PASSWORD_MIN} characters`}
-              placeholderTextColor="#B0B7C1"
-              secureTextEntry
-              style={a.input}
-              editable={!submitting}
-              returnKeyType="next"
-            />
+            <View style={{ 
+              flexDirection: 'row', 
+              alignItems: 'center', 
+              borderWidth: 1, 
+              borderColor: '#E7E3DC', 
+              borderRadius: 6, 
+              backgroundColor: '#FFFFFF', 
+              marginBottom: 8 
+            }}>
+              <TextInput
+                value={password}
+                onChangeText={setPassword}
+                placeholder={`At least ${PASSWORD_MIN} characters`}
+                placeholderTextColor="#B0B7C1"
+                secureTextEntry={!showPassword}
+                style={{ flex: 1, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: '#17283A' }}
+                editable={!submitting}
+                returnKeyType="next"
+              />
+              <Pressable onPress={() => setShowPassword(!showPassword)} style={{ padding: 10 }} hitSlop={8}>
+                <Feather name={showPassword ? 'eye-off' : 'eye'} size={20} color="#7C8792" />
+              </Pressable>
+            </View>
             <Text style={a.fieldHint}>
               Use at least {PASSWORD_MIN} characters.
             </Text>
@@ -143,17 +162,30 @@ export default function SignUpScreen({ onBack, onGoToSignIn }) {
 
           <View style={a.field}>
             <Text style={a.label}>CONFIRM PASSWORD</Text>
-            <TextInput
-              value={confirm}
-              onChangeText={setConfirm}
-              placeholder="Repeat your password"
-              placeholderTextColor="#B0B7C1"
-              secureTextEntry
-              style={a.input}
-              editable={!submitting}
-              returnKeyType="go"
-              onSubmitEditing={submit}
-            />
+            <View style={{ 
+              flexDirection: 'row', 
+              alignItems: 'center', 
+              borderWidth: 1, 
+              borderColor: '#E7E3DC', 
+              borderRadius: 6, 
+              backgroundColor: '#FFFFFF', 
+              marginBottom: 8 
+            }}>
+              <TextInput
+                value={confirm}
+                onChangeText={setConfirm}
+                placeholder="Repeat your password"
+                placeholderTextColor="#B0B7C1"
+                secureTextEntry={!showConfirmPassword}
+                style={{ flex: 1, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: '#17283A' }}
+                editable={!submitting}
+                returnKeyType="go"
+                onSubmitEditing={submit}
+              />
+              <Pressable onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={{ padding: 10 }} hitSlop={8}>
+                <Feather name={showConfirmPassword ? 'eye-off' : 'eye'} size={20} color="#7C8792" />
+              </Pressable>
+            </View>
           </View>
 
           <Pressable
