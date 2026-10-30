@@ -23,7 +23,6 @@ function phpUrlEncode(str) {
 
 // PayFast requires fields in the EXACT order shown in their documentation,
 // NOT alphabetical order. This is the canonical order for checkout forms.
-// See: https://developers.payfast.co.za/docs#step_1_form_fields
 const PAYFAST_FIELD_ORDER = [
   'merchant_id',
   'merchant_key',
@@ -64,7 +63,7 @@ function buildSignature(fields, passphrase) {
     parts.push(`${key}=${phpUrlEncode(String(value).trim())}`);
   }
 
-  // Second pass: emit any fields not in the canonical list (rare, but safe)
+  // Second pass: emit any fields not in the canonical list
   for (const key of Object.keys(fields)) {
     if (PAYFAST_FIELD_ORDER.includes(key)) continue;
     if (key === 'signature') continue;
@@ -75,8 +74,7 @@ function buildSignature(fields, passphrase) {
 
   // Append passphrase only if it's set. PayFast docs:
   // "If you do not have a passphrase set, do not include the passphrase
-  //  in the string." Including `&passphrase=` when empty produces a
-  // signature PayFast will never match → 400 Bad Request.
+  //  in the string."
   const safePassphrase = String(passphrase ?? '').trim();
   if (safePassphrase) {
     parts.push(`passphrase=${phpUrlEncode(safePassphrase)}`);
@@ -84,13 +82,6 @@ function buildSignature(fields, passphrase) {
 
   const signingString = parts.join('&');
   return crypto.createHash('md5').update(signingString).digest('hex');
-}
-
-function verifyItnSignature(itnFields, passphrase) {
-  const received = itnFields.signature;
-  if (!received) return false;
-  const rebuilt = buildSignature(itnFields, passphrase);
-  return rebuilt === received;
 }
 
 function getPayfastProcessUrl() {
@@ -106,12 +97,7 @@ function getPayfastValidateUrl() {
 }
 
 function buildPaymentFields({ order, returnUrl, cancelUrl, notifyUrl, merchantId, merchantKey, passphrase }) {
-  // Validate required config upfront with clear messages — no more
-  // mysterious 500s when an env var is missing.
-  //
-  // Note: PAYFAST_PASSPHRASE is NOT checked. Empty is a valid setting
-  // (PayFast dashboard shows no passphrase for this merchant). The
-  // signature function handles empty passphrase by omitting it entirely.
+  // Validate required config upfront with clear messages.
   const missing = [];
   if (!merchantId)  missing.push('PAYFAST_MERCHANT_ID');
   if (!merchantKey) missing.push('PAYFAST_MERCHANT_KEY');
@@ -126,6 +112,10 @@ function buildPaymentFields({ order, returnUrl, cancelUrl, notifyUrl, merchantId
   const nameFirst = parts[0] || 'Customer';
   const nameLast = parts.slice(1).join(' ') || 'User';
 
+  // PayFast ONLY processes ZAR. If the customer checked out in USD/GBP/EUR,
+  // we must charge them the ZAR equivalent (base_total).
+  const amountToCharge = Number(order.base_total || order.total).toFixed(2);
+
   const fields = {
     merchant_id: merchantId,
     merchant_key: merchantKey,
@@ -136,9 +126,8 @@ function buildPaymentFields({ order, returnUrl, cancelUrl, notifyUrl, merchantId
     name_last: nameLast,
     email_address: order.customer_email || 'noreply@diamonddee.local',
     m_payment_id: String(order.id),
-    amount: Number(order.total).toFixed(2),
+    amount: amountToCharge,
     item_name: `Order ${order.order_number}`.slice(0, 100),
-    // Removed item_description — minimal test
   };
 
   const signature = buildSignature(fields, passphrase);
@@ -146,8 +135,7 @@ function buildPaymentFields({ order, returnUrl, cancelUrl, notifyUrl, merchantId
 }
 
 // ITN signature verification uses ALPHABETICAL field order — different
-// from the payment-form signature (which uses canonical order). This is
-// documented in PayFast's ITN documentation.
+// from the payment-form signature (which uses canonical order).
 function buildItnSignature(itnFields, passphrase) {
   const sortedKeys = Object.keys(itnFields).sort();
   const parts = [];

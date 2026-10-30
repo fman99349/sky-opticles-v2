@@ -13,6 +13,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import Typewriter from './components/Typewriter';
 
 import { styles } from './styles';
@@ -28,7 +29,6 @@ import { defaultConfigForProductType } from './data/lensOptions';
 import ForgotPasswordScreen from './screens/ForgotPasswordScreen';
 import { CartProvider, useCart } from './cart/CartContext';
 import { AuthProvider, useAuth } from './auth/AuthContext';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NotificationProvider } from './notifications/NotificationContext';
 import { CurrencyProvider, useCurrency } from './utils/CurrencyContext';
 import Brand from './components/Brand';
@@ -316,6 +316,7 @@ function RootApp() {
   const { user, restoring } = useAuth();
   const [screen, setScreen] = useState('welcome');
   const [selectedProduct, setSelectedProduct] = useState(null);
+    const [returnTab, setReturnTab] = useState('shops');
   const { addItem } = useCart();
 
   useEffect(() => {
@@ -340,11 +341,28 @@ function RootApp() {
     setScreen('cart');
   };
 
-  if (user && screen !== 'signin' && screen !== 'signup') {
+   if (user && screen !== 'signin' && screen !== 'signup') {
     if (screen === 'detail' && selectedProduct) {
-      return <DetailScreen product={selectedProduct} onBack={() => setScreen('welcome')} onAddToCart={handleAddToCart} />;
+      return (
+        <DetailScreen 
+          product={selectedProduct} 
+          onBack={() => { 
+            setScreen('dashboard'); 
+            setReturnTab('products'); // Forces the Products tab to open
+          }} 
+          onAddToCart={handleAddToCart} 
+        />
+      );
     }
-    return <DashboardScreen onOpenProduct={(product) => { setSelectedProduct(product); setScreen('detail'); }} />;
+    return (
+      <DashboardScreen 
+        initialSubTab={returnTab}
+        onOpenProduct={(product) => { 
+          setSelectedProduct(product); 
+          setScreen('detail'); 
+        }} 
+      />
+    );
   }
 
   if (screen === 'catalogue') {

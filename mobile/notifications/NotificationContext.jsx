@@ -1,165 +1,88 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { Platform } from 'react-native';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { Platform, Alert } from 'react-native';
+import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
-import Constants from 'expo-constants';
 import { useAuth } from '../auth/AuthContext';
-import { API_URL } from '../utils/api';
-import { deleteNotification, clearAllNotifications } from '../utils/api';
+import { updatePushToken } from '../utils/api'; // Assuming you have this, or use the endpoint directly
 
-// Expo SDK 57 bug workaround: Conditional require prevents the Expo Go crash
-let Notifications = null;
-try {
-  Notifications = require('expo-notifications');
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldPlaySound: true,
-      shouldSetBadge: false,
-    }),
-  });
-} catch (e) {
-  console.warn('expo-notifications unavailable (running in Expo Go):', e.message);
-}
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
-const NotificationContext = createContext(null);
+const NotificationContext = createContext({});
 
 export function NotificationProvider({ children }) {
-  const { user, token } = useAuth();
+  const { token, user } = useAuth();
+  const [expoPushToken, setExpoPushToken] = useState('');
   const [notifications, setNotifications] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [loading, setLoading] = useState(false);
 
-  // 1. Register for Push Notifications
   useEffect(() => {
-    async function registerForPushNotificationsAsync() {
-      if (!Notifications) return;
-      if (!user || !token || !Device.isDevice) return;
+    if (!user || !token) return;
 
-      try {
-        const { status: existingStatus } = await Notifications.getPermissionsAsync();
-        let finalStatus = existingStatus;
-        if (existingStatus !== 'granted') {
-          const { status } = await Notifications.requestPermissionsAsync();
-          finalStatus = status;
+    registerForPushNotificationsAsync().then(async (pushToken) => {
+      if (pushToken) {
+        setExpoPushToken(pushToken);
+        try {
+          // Send the token to your backend so it can send push notifications
+          await fetch('https://reprimand-oxidation-atlas.ngrok-free.dev/api/auth/push-token', {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ pushToken }),
+          });
+          console.log('✅ Push token registered with backend:', pushToken);
+        } catch (e) {
+          console.warn('Failed to save push token to backend:', e);
         }
-        if (finalStatus !== 'granted') return;
-
-        const projectId =
-          Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId;
-        
-        const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
-        const pushToken = tokenData.data;
-
-        await fetch(`${API_URL}/auth/push-token`, {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ pushToken }),
-        });
-      } catch (e) {
-        console.log('Error getting push token', e);
       }
-    }
-
-    if (Notifications && Platform.OS === 'android') {
-      Notifications.setNotificationChannelAsync('default', {
-        name: 'default',
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#FF231F7C',
-      });
-    }
-
-    registerForPushNotificationsAsync();
+    });
   }, [user, token]);
 
-  // 2. Fetch Notifications
-  const fetchNotifications = useCallback(async () => {
-    if (!token) return;
-    setLoading(true);
-    try {
-      const res = await fetch(`${API_URL}/notifications`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (data.data) {
-        setNotifications(data.data);
-        setUnreadCount(data.data.filter((n) => !n.is_read).length);
-      }
-    } catch (e) {
-      // silent
-    } finally {
-      setLoading(false);
-    }
-  }, [token]);
-
-  // Poll every 15 seconds
-  useEffect(() => {
-    fetchNotifications();
-    const interval = setInterval(fetchNotifications, 15000);
-    return () => clearInterval(interval);
-  }, [fetchNotifications]);
-
-  // 3. Mark all as read
-  const markAllAsRead = async () => {
-    if (!token || unreadCount === 0) return;
-    setUnreadCount(0);
-    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
-    try {
-      await fetch(`${API_URL}/notifications/read-all`, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-    } catch (e) {
-      // silent
-    }
-  };
-
-
-    const removeNotification = async (id) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
-    try {
-      await deleteNotification(token, id);
-    } catch (e) {
-      fetchNotifications(); // revert if failed
-    }
-  };
-
-  const clearAll = async () => {
-    setNotifications([]);
-    setUnreadCount(0);
-    try {
-      await clearAllNotifications(token);
-    } catch (e) {
-      fetchNotifications();
-    }
-  };
-
-
-
-
-
-  const value = {
-    notifications,
-    unreadCount,
-    loading,
-    fetchNotifications,
-    markAllAsRead,
-    removeNotification,
-    clearAll,
-  };
-
   return (
-    <NotificationContext.Provider value={value}>
+    <NotificationContext.Provider value={{ expoPushToken, notifications, setNotifications }}>
       {children}
     </NotificationContext.Provider>
   );
 }
 
+async function registerForPushNotificationsAsync() {
+  let pushToken;
+
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('default', {
+      name: 'default',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#FF231F7C',
+    });
+  }
+
+  if (Device.isDevice) {
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+    if (finalStatus !== 'granted') {
+      console.warn('Failed to get push token for push notification!');
+      return;
+    }
+    // This line will now work because google-services.json is present
+    pushToken = (await Notifications.getExpoPushTokenAsync()).data;
+  } else {
+    console.warn('Must use physical device for Push Notifications');
+  }
+
+  return pushToken;
+}
+
 export function useNotifications() {
-  const ctx = useContext(NotificationContext);
-  if (!ctx) throw new Error('useNotifications must be used inside NotificationProvider');
-  return ctx;
+  return useContext(NotificationContext);
 }

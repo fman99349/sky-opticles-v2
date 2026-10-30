@@ -2,31 +2,33 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   Text,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Feather } from '@expo/vector-icons';
+
 import { styles } from '../styles';
 import { useCart } from '../cart/CartContext';
 import { fetchProductDetail } from '../utils/api';
 import { imageFor, price, category } from '../utils/product';
 import { defaultConfigForProductType } from '../data/lensOptions';
 import { useCurrency } from '../utils/CurrencyContext';
-import Brand from '../components/Brand';
-import { HomeIcon, CartIcon } from '../components/Icons';
 import PrimaryButton from '../components/PrimaryButton';
 import VariantPicker from '../components/VariantPicker';
 import LensWizard from './LensWizard';
 import ProductSpecs from '../components/ProductSpecs';
 import ProductImageCarousel from '../components/ProductImageCarousel';
 
-const C = { navy: '#101D2C', gold: '#D7B987' };
+const C = { navy: '#101D2C', gold: '#D7B987', cream: '#F8F5EF' };
 
 export default function DetailScreen({ product, onBack, onAddToCart }) {
   const { count } = useCart();
   const { currency } = useCurrency();
+  const insets = useSafeAreaInsets();
+  
   const [wizardOpen, setWizardOpen] = useState(false);
   const [detail, setDetail] = useState(null);
   const [selectedVariantId, setSelectedVariantId] = useState(null);
@@ -73,9 +75,6 @@ export default function DetailScreen({ product, onBack, onAddToCart }) {
   const basePrice = Number(product.price || 0);
   const variantConfig = selectedVariantId ? { variantId: selectedVariantId, variantSku } : {};
   const needsConfigurator = product.has_configurator !== false;
-    // Pick the 3D model to open: variant-specific if one exists,
-  // otherwise the product-wide primary model, otherwise the first available.
-
 
   const variantAttrs = selectedVariant?.attributes || {};
   const attrText = Object.entries(variantAttrs)
@@ -103,7 +102,7 @@ export default function DetailScreen({ product, onBack, onAddToCart }) {
       <LensWizard
         product={product}
         initialConfig={variantConfig}
-        previewImage={displayImage}
+        previewImage={galleryImages[0]?.image_url || imageFor(product)}
         onClose={() => setWizardOpen(false)}
         onComplete={handleWizardComplete}
       />
@@ -111,29 +110,28 @@ export default function DetailScreen({ product, onBack, onAddToCart }) {
   }
 
   return (
-    <SafeAreaView style={styles.detailSafe}>
+    <View style={{ flex: 1, backgroundColor: C.cream }}>
       <StatusBar barStyle="light-content" backgroundColor={C.navy} />
 
-      <View style={styles.detailHeader}>
-        <View style={styles.catalogueTopRow}>
-          <Pressable onPress={onBack} style={styles.headerBtnRow}>
-            <HomeIcon color={C.gold} size={14} />
-            <Text style={styles.backLinkText}>COLLECTION</Text>
+      {/* Top Dark Navy Layer (Matching Dashboard) */}
+      <View style={{ backgroundColor: C.navy, paddingTop: insets.top > 0 ? insets.top + 8 : 14, paddingBottom: 16, paddingHorizontal: 20 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Pressable onPress={onBack} hitSlop={12} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Feather name="arrow-left" color={C.gold} size={22} />
+            <Text style={{ color: C.gold, fontSize: 11, fontWeight: '900', letterSpacing: 1 }}>BACK</Text>
           </Pressable>
-
-          <Pressable onPress={onBack} hitSlop={10} style={styles.headerCartBtn}>
-            <CartIcon color={C.gold} size={22} />
+          <Pressable onPress={onBack} hitSlop={12} style={{ position: 'relative' }}>
+            <Feather name="shopping-cart" color={C.gold} size={22} />
             {count > 0 && (
-              <View style={styles.headerCartBadge}>
-                <Text style={styles.headerCartBadgeText}>{count}</Text>
+              <View style={{ position: 'absolute', top: -4, right: -8, backgroundColor: C.gold, borderRadius: 9, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 }}>
+                <Text style={{ color: C.navy, fontSize: 10, fontWeight: '900' }}>{count}</Text>
               </View>
             )}
           </Pressable>
         </View>
-        <Brand />
       </View>
 
-      <ScrollView contentContainerStyle={styles.detailBody}>
+      <ScrollView contentContainerStyle={[styles.detailBody, { paddingBottom: insets.bottom + 40 }]}>
         <ProductImageCarousel
           images={galleryImages}
           fallbackUri={imageFor(product)}
@@ -176,8 +174,6 @@ export default function DetailScreen({ product, onBack, onAddToCart }) {
           <ProductSpecs attributes={selectedVariant.attributes} />
         )}
 
-        
-
         {needsConfigurator ? (
           <View style={styles.lensActionsRow}>
             <Pressable onPress={() => setWizardOpen(true)} style={({ pressed }) => [styles.lensActionPrimary, pressed && styles.buttonPressed]}>
@@ -195,9 +191,8 @@ export default function DetailScreen({ product, onBack, onAddToCart }) {
           </View>
         )}
 
-        <PrimaryButton title="BACK TO COLLECTION" onPress={onBack} outline />
+        <PrimaryButton title="BACK TO PRODUCTS" onPress={onBack} outline />
       </ScrollView>
-
-    </SafeAreaView>
+    </View>
   );
 }

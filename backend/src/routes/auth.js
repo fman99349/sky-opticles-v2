@@ -310,90 +310,33 @@ router.patch('/auth/me', async (req, res) => {
 // ---------------------------------------------------------------------------
 // PATCH /api/auth/push-token
 // ---------------------------------------------------------------------------
+// PATCH /api/auth/push-token
 router.patch('/auth/push-token', async (req, res) => {
   const header = req.headers.authorization || '';
   const match = header.match(/^Bearer\s+(.+)$/i);
   if (!match) return res.status(401).json({ error: 'Missing auth header.' });
 
   let payload;
-  try { payload = jwt.verify(match[1], process.env.JWT_SECRET); }
+  try { payload = jwt.verify(match[1], process.env.JWT_SECRET); } 
   catch { return res.status(401).json({ error: 'Invalid token.' }); }
 
   const { pushToken } = req.body;
   if (!pushToken) return res.status(400).json({ error: 'pushToken required.' });
 
   try {
+    // 1. Save the token
     await pool.query('UPDATE users SET expo_push_token = $1 WHERE id = $2', [pushToken, payload.sub]);
+    
+    // 2. Send Welcome Notification
+    sendExpoPush(
+      pushToken, 
+      'Welcome to Diamond Dee! 💎', 
+      'Your account is ready. Start exploring the marketplace today.'
+    );
+
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: 'Failed to save token.' });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// POST /api/auth/forgot-password
-// ---------------------------------------------------------------------------
-router.post('/auth/forgot-password', async (req, res) => {
-  const { email } = req.body || {};
-  if (!isValidEmail(email)) {
-    return res.status(400).json({ error: 'Valid email is required.' });
-  }
-
-  try {
-    // Select `name` too so we can personalise the email greeting
-    const userRes = await pool.query(
-      'SELECT id, email, name FROM users WHERE LOWER(email) = $1',
-      [email.trim().toLowerCase()]
-    );
-
-    // Security: Always return success even if the email doesn't exist
-    if (userRes.rows.length === 0) {
-      return res.json({ success: true, message: 'If that email exists, a reset code has been sent.' });
-    }
-
-    const user = userRes.rows[0];
-
-    // 6-char uppercase alphanumeric code
-    const token = crypto.randomBytes(3).toString('hex').toUpperCase();
-
-    // Expire in 15 minutes
-    const expiresAt = new Date(Date.now() + 15 * 60000);
-
-    // Save to database
-    await pool.query('DELETE FROM password_reset_tokens WHERE user_id = $1', [user.id]);
-    await pool.query(
-      'INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)',
-      [user.id, token, expiresAt]
-    );
-
-    // Send the reset code via email — AWAITED
-    try {
-      const tpl = passwordResetEmail({ name: user.name, code: token });
-      const emailResult = await sendEmail({
-        to: user.email,
-        subject: tpl.subject,
-        html: tpl.html,
-      });
-      if (!emailResult.ok) {
-        console.warn('[forgot-password] Reset email failed:', emailResult.error);
-      } else {
-        console.log(`[forgot-password] Reset email sent to ${user.email}`);
-      }
-    } catch (err) {
-      console.warn('[forgot-password] Reset email error:', err.message);
-    }
-
-    // In dev, also print the code so you can test without checking email
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('\n=============================================');
-      console.log(`🔐 PASSWORD RESET CODE for ${user.email}`);
-      console.log(`👉 CODE: ${token}`);
-      console.log('=============================================\n');
-    }
-
-    res.json({ success: true, message: 'If that email exists, a reset code has been sent.' });
-  } catch (error) {
-    handleError(res, error, 'Forgot password failed');
   }
 });
 

@@ -27,7 +27,7 @@ export const dashStyles = StyleSheet.create({
   topBar: {
     backgroundColor: C.navy,
     paddingHorizontal: 20,
-    paddingTop: 14,
+    
     paddingBottom: 16,
     flexDirection: 'row',
     alignItems: 'center',

@@ -343,4 +343,42 @@ router.post('/admin/shops/:id/mark-paid', requireAdmin, requirePlatformOwner, as
   }
 });
 
+
+// GET /api/admin/shop-types
+router.get('/admin/shop-types', requireAdmin, requirePlatformOwner, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT * FROM shop_types ORDER BY sort_order ASC');
+    res.json({ data: r.rows });
+  } catch (error) {
+    res.status(500).json({ error: 'An unexpected server error occurred.' });
+  }
+});
+
+// PATCH /api/admin/shop-types/:id
+router.patch('/admin/shop-types/:id', requireAdmin, requirePlatformOwner, async (req, res) => {
+  const id = Number(req.params.id);
+  const { is_active } = req.body;
+  
+  if (typeof is_active !== 'boolean') {
+    return res.status(400).json({ error: 'is_active must be true or false.' });
+  }
+
+  try {
+    const r = await pool.query(
+      'UPDATE shop_types SET is_active = $1 WHERE id = $2 RETURNING *',
+      [is_active, id]
+    );
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Shop type not found.' });
+    res.json({ data: r.rows[0] });
+  } catch (error) {
+    res.status(500).json({ error: 'An unexpected server error occurred.' });
+  }
+});
+
+
+
+
+
+
+
 module.exports = router;

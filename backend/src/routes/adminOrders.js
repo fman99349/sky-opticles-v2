@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const pool = require('../db');
 const { requireAdmin } = require('./adminAuth');
+const { sendExpoPush } = require('../utils/expoPush');
 
 const router = express.Router();
 
@@ -201,7 +202,37 @@ router.patch('/admin/orders/:id', requireAdmin, async (req, res) => {
       values
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Order not found.' });
-    res.json({ data: result.rows[0] });
+    
+    const updatedOrder = result.rows[0];
+
+    // Send Push Notification if fulfillment status changed
+    if (fulfillment_status !== undefined) {
+      try {
+        const userRes = await pool.query(
+          `SELECT u.expo_push_token 
+             FROM orders o 
+             JOIN users u ON u.id = o.user_id 
+            WHERE o.id = $1`, 
+          [id]
+        );
+        
+        const pushToken = userRes.rows[0]?.expo_push_token;
+        if (pushToken) {
+          // Make it look nice: 'processing' -> 'Processing'
+          const prettyStatus = fulfillment_status.charAt(0).toUpperCase() + fulfillment_status.slice(1);
+          sendExpoPush(
+            pushToken, 
+            'Order Status Updated', 
+            `Your order ${updatedOrder.order_number} is now ${prettyStatus}.`,
+            { orderId: id }
+          );
+        }
+      } catch (err) {
+        console.error('Failed to send status update push notification:', err.message);
+      }
+    }
+
+    res.json({ data: updatedOrder });
   } catch (error) {
     console.error('Admin update order failed:', error.message);
     res.status(500).json({ error: 'An unexpected server error occurred.' });

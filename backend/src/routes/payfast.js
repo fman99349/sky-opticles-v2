@@ -1,7 +1,7 @@
 // backend/src/routes/payfast.js
 //
 // PayFast payment integration routes.
-
+const { sendExpoPush } = require('../utils/expoPush');
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const pool = require('../db');
@@ -49,7 +49,7 @@ router.post('/orders/:id/pay/payfast', requireCustomer, async (req, res) => {
   try {
     const orderRes = await pool.query(
       `SELECT id, order_number, user_id, customer_name, customer_email,
-              total, currency, payment_status
+              total, base_total, currency, payment_status
          FROM orders
         WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
       [orderId, req.customer.id]
@@ -64,11 +64,6 @@ router.post('/orders/:id/pay/payfast', requireCustomer, async (req, res) => {
     }
     if (order.payment_status === 'refunded') {
       return res.status(409).json({ error: 'Cannot pay a refunded order.' });
-    }
-    if (order.currency !== 'ZAR') {
-      return res.status(400).json({
-        error: `PayFast only supports ZAR. This order is in ${order.currency}.`,
-      });
     }
 
     const sessionToken = jwt.sign(
@@ -110,8 +105,9 @@ router.get('/payfast/redirect/:token', async (req, res) => {
   }
 
   try {
+    // Added base_total to the SELECT
     const orderRes = await pool.query(
-      `SELECT id, order_number, customer_name, customer_email, total, currency, payment_status
+      `SELECT id, order_number, customer_name, customer_email, total, base_total, currency, payment_status
          FROM orders WHERE id = $1`,
       [payload.orderId]
     );
@@ -123,9 +119,9 @@ router.get('/payfast/redirect/:token', async (req, res) => {
     if (order.payment_status === 'paid') {
       return res.status(409).type('html').send(renderError('This order is already paid.'));
     }
-    if (order.currency !== 'ZAR') {
-      return res.status(400).type('html').send(renderError('Currency not supported by PayFast.'));
-    }
+    
+    // Removed the ZAR-only restriction — non-ZAR orders will be charged
+    // the ZAR equivalent (base_total) via the amount field.
 
     const fields = buildPaymentFields({
       order,
@@ -179,12 +175,8 @@ router.get('/payfast/redirect/:token', async (req, res) => {
 router.post('/payfast/itn', async (req, res) => {
   const itn = req.body || {};
 
-  // Local signature check is advisory only. PayFast's ITN signature
-  // algorithm differs from the payment-form signature in subtle ways
-  // (empty field handling, encoding), so we log mismatches for debugging
-  // but do not block on them. The authoritative check is the server-side
-  // validation below — PayFast verifies their own signature and tells us
-  // "VALID" or "INVALID".
+  // Local signature check is advisory only. The authoritative check is
+  // the server-side validation below.
   const signatureOk = verifyItnSignature(itn, process.env.PAYFAST_PASSPHRASE);
   if (!signatureOk) {
     console.warn('PayFast ITN: local signature mismatch (advisory, not blocking)');
@@ -225,8 +217,9 @@ router.post('/payfast/itn', async (req, res) => {
   }
 
   try {
+    // Added base_total to the SELECT
     const orderRes = await pool.query(
-      `SELECT id, total, payment_status, order_number FROM orders WHERE id = $1`,
+      `SELECT id, total, base_total, payment_status, order_number FROM orders WHERE id = $1`,
       [orderId]
     );
     if (orderRes.rows.length === 0) {
@@ -235,18 +228,44 @@ router.post('/payfast/itn', async (req, res) => {
     }
     const order = orderRes.rows[0];
 
-    if (Math.abs(Number(order.total) - grossAmount) > 0.01) {
-      console.error(`PayFast ITN: amount mismatch for order ${orderId}. Expected ${order.total}, got ${grossAmount}`);
+    // Compare against base_total (ZAR equivalent), not total (display currency).
+    const expectedZar = Number(order.base_total || order.total);
+    if (Math.abs(expectedZar - grossAmount) > 0.01) {
+      console.error(`PayFast ITN: amount mismatch for order ${orderId}. Expected ZAR ${expectedZar}, got ${grossAmount}`);
       return res.status(400).send('AMOUNT MISMATCH');
     }
 
     if (paymentStatus === 'COMPLETE') {
       if (order.payment_status !== 'paid') {
+        // 1. Mark as paid
         await pool.query(
           `UPDATE orders SET payment_status = 'paid', paid_at = NOW(), updated_at = NOW() WHERE id = $1`,
           [orderId]
         );
         console.log(`PayFast ITN: order ${orderId} (${order.order_number}) marked PAID`);
+
+        // 2. Fetch user to get push token
+        try {
+          const userRes = await pool.query(
+            `SELECT u.expo_push_token 
+               FROM orders o 
+               JOIN users u ON u.id = o.user_id 
+              WHERE o.id = $1`, 
+            [orderId]
+          );
+          
+          const pushToken = userRes.rows[0]?.expo_push_token;
+          if (pushToken) {
+            sendExpoPush(
+              pushToken, 
+              'Payment Confirmed ✅', 
+              `Your payment for order ${order.order_number} was successful.`,
+              { orderId: order.id }
+            );
+          }
+        } catch (err) {
+          console.error('Failed to send payment push notification:', err.message);
+        }
       }
     } else if (['FAILED', 'CANCELLED'].includes(paymentStatus)) {
       console.log(`PayFast ITN: order ${orderId} payment ${paymentStatus} — no action taken.`);

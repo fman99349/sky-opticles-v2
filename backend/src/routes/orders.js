@@ -532,6 +532,12 @@ router.post('/orders', requireCustomer, async (req, res) => {
     // Push notification (fire-and-forget; push is best-effort)
     sendExpoPush(req.customer.expo_push_token, 'Order Placed', `We have received your order ${orderNum}.`);
 
+
+
+
+
+    
+
     // In-app notification to platform admin
     await client.query(
       `INSERT INTO notifications (admin_id, title, message, type)

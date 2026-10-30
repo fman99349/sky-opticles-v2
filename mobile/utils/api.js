@@ -216,6 +216,17 @@ export async function initiatePayfastPayment(token, orderId) {
   });
 }
 
+
+export async function fetchCurrencies() {
+  const result = await request('/currencies');
+  return result.data || [];
+}
+
+
+
+
+
+
 // --- Account profile ---
 // Updates any subset of { name, phone, email } on the signed-in customer's
 // account. The backend validates each field independently and returns the
@@ -340,3 +351,4 @@ export async function fetchShopProducts(slug, currency = 'ZAR', filters = {}) {
   const result = await request(`/shops/${encodeURIComponent(slug)}/products?${qs.toString()}`);
   return { data: result.data || [], pagination: result.pagination };
 }
+

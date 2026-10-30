@@ -20,6 +20,7 @@ import { configSummary, configTotalDelta } from '../data/lensOptions';
 import { price } from '../utils/product';
 import { checkoutStyles as s } from './checkoutStyles';
 
+
 const C = { navy: '#101D2C', gold: '#D7B987' };
 
 function isValidPhone(value) {
@@ -82,38 +83,97 @@ function SuccessScreen({ order, onContinue, onViewOrders }) {
   const deliveryDate = formatDeliveryDate(order.estimated_delivery_date);
 
   return (
-    <SafeAreaView style={s.shell}>
-      <StatusBar barStyle="light-content" backgroundColor={C.navy} />
-      <View style={s.successShell}>
-        <View style={s.successIconWrap}>
-          <Ionicons name="checkmark-circle" size={44} color="#2E8D86" />
-        </View>
-        <Text style={s.successTitle}>Order placed!</Text>
-        <Text style={s.successSubtitle}>
-          Thank you. We have received your order and will process it shortly.
-        </Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#F8F5EF' }}>
+      <StatusBar barStyle="dark-content" backgroundColor="#F8F5EF" />
+      
+      <View style={{ flex: 1, paddingHorizontal: 24, justifyContent: 'center', alignItems: 'center' }}>
         
-        <View style={s.successOrderNumber}>
-          <Text style={s.successOrderNumberLabel}>ORDER NUMBER</Text>
-          <Text style={s.successOrderNumberValue}>{order.order_number}</Text>
+        {/* Animated/Static Check Icon */}
+        <View style={{ 
+          width: 100, 
+          height: 100, 
+          borderRadius: 50, 
+          backgroundColor: 'rgba(46, 141, 134, 0.1)', 
+          justifyContent: 'center', 
+          alignItems: 'center',
+          marginBottom: 24
+        }}>
+          <Ionicons name="checkmark" size={56} color="#2E8D86" />
         </View>
-        
-        {deliveryDate && (
-          <View style={[s.successOrderNumber, { marginTop: 10, backgroundColor: '#F1F9F8', borderColor: '#2E8D86' }]}>
-            <Text style={[s.successOrderNumberLabel, { color: '#2E8D86' }]}>ESTIMATED DELIVERY</Text>
-            <Text style={[s.successOrderNumberValue, { fontSize: 16, color: '#2E8D86' }]}>{deliveryDate}</Text>
-          </View>
-        )}
 
-        {/* THE BUTTONS ARE BACK */}
-        <View style={s.successActions}>
-          <Pressable onPress={onViewOrders} style={s.successPrimaryBtn}>
-            <Text style={s.successPrimaryBtnText}>VIEW MY ORDERS</Text>
+        {/* Header Text */}
+        <Text style={{ fontSize: 28, fontWeight: '900', color: '#101D2C', marginBottom: 12, textAlign: 'center', letterSpacing: -0.5 }}>
+          Order Confirmed!
+        </Text>
+        <Text style={{ fontSize: 14, color: '#7C8792', textAlign: 'center', lineHeight: 22, marginBottom: 32, paddingHorizontal: 20 }}>
+          Thank you for your purchase. We've sent a confirmation email with your receipt and tracking details.
+        </Text>
+
+        {/* Receipt Card */}
+        <View style={{ 
+          backgroundColor: '#FFFFFF', 
+          borderRadius: 16, 
+          padding: 24, 
+          width: '100%', 
+          marginBottom: 32,
+          borderWidth: 1,
+          borderColor: '#E7E3DC',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 6 },
+          shadowOpacity: 0.05,
+          shadowRadius: 16,
+          elevation: 3,
+        }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <Text style={{ fontSize: 13, color: '#7C8792', fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 }}>Order Number</Text>
+            <Text style={{ fontSize: 15, color: '#101D2C', fontWeight: '900' }}>{order.order_number}</Text>
+          </View>
+          
+          <View style={{ height: 1, backgroundColor: '#F0EBE3', marginVertical: 12 }} />
+
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={{ fontSize: 13, color: '#7C8792', fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 }}>Total Paid</Text>
+            <Text style={{ fontSize: 16, color: '#101D2C', fontWeight: '900' }}>
+              {order.currency === 'ZAR' ? 'R' : order.currency === 'USD' ? '$' : '£'} {Number(order.total).toFixed(2)}
+            </Text>
+          </View>
+
+        </View>
+
+        {/* Action Buttons */}
+        <View style={{ width: '100%', marginTop: 'auto', marginBottom: 20 }}>
+          <Pressable 
+            onPress={onViewOrders} 
+            style={({ pressed }) => ({
+              backgroundColor: '#101D2C',
+              width: '100%', 
+              paddingVertical: 18, 
+              borderRadius: 8, 
+              alignItems: 'center', 
+              marginBottom: 12,
+              opacity: pressed ? 0.85 : 1
+            })}
+          >
+            <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '900', letterSpacing: 1 }}>TRACK MY ORDER</Text>
           </Pressable>
-          <Pressable onPress={onContinue} style={s.successSecondaryBtn}>
-            <Text style={s.successSecondaryBtnText}>CONTINUE SHOPPING</Text>
+          
+          <Pressable 
+            onPress={onContinue} 
+            style={({ pressed }) => ({
+              backgroundColor: 'transparent', 
+              width: '100%', 
+              paddingVertical: 16, 
+              borderRadius: 8, 
+              alignItems: 'center',
+              borderWidth: 1,
+              borderColor: '#D7B987',
+              opacity: pressed ? 0.7 : 1
+            })}
+          >
+            <Text style={{ color: '#101D2C', fontSize: 14, fontWeight: '900', letterSpacing: 0.5 }}>CONTINUE SHOPPING</Text>
           </Pressable>
         </View>
+
       </View>
     </SafeAreaView>
   );

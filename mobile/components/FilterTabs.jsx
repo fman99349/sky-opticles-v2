@@ -14,7 +14,12 @@ export default function FilterTabs({
     <View>
       {/* PARENT TABS (Larger) */}
       <View style={styles.filterBar}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterContent}>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false} 
+          contentContainerStyle={styles.filterContent}
+          nestedScrollEnabled={true}
+        >
           {parentTabs.map((tab) => {
             const active = tab.id === activeParentId;
             return (
@@ -39,7 +44,12 @@ export default function FilterTabs({
       {/* CHILD TABS (Smaller) */}
       {childTabs && childTabs.length > 1 && (
         <View style={styles.subFilterBar}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterContent}>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false} 
+            contentContainerStyle={styles.filterContent}
+            nestedScrollEnabled={true}
+          >
             {childTabs.map((tab) => {
               const active = tab.id === activeChildId;
               return (

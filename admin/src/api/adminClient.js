@@ -192,6 +192,21 @@ export const adminApi = {
   uploadShopLogo: (file) => uploadMultipart('/admin/me/shop/logo', file),
 
   uploadShopBanner: (file) => uploadMultipart('/admin/me/shop/banner', file),
+
+
+  listShopTypes: () =>
+    request('/admin/shop-types'),
+
+  toggleShopType: (id, is_active) =>
+    request(`/admin/shop-types/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ is_active }),
+    }),
+
+
+
+
+
 };
 
 export { API_BASE_URL };

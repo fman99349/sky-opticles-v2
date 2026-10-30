@@ -18,6 +18,7 @@ const adminOrderRoutes = require('./routes/adminOrders');
 const notificationRoutes = require('./routes/notifications');
 const adminLensOptionsRoutes = require('./routes/adminLensOptions');
 const adminStatsRoutes = require('./routes/adminStats');
+const currencyRoutes = require('./routes/currencies');
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -26,6 +27,7 @@ app.use(cors());
 app.use(express.urlencoded({ extended: false, limit: '1mb' }));
 app.use(express.json());
 app.use('/api', catalogueRoutes);
+app.use('/api', currencyRoutes);
 app.use('/api', inventoryRoutes);
 app.use('/api', authRoutes);
 app.use('/api', adminAuthRoutes);

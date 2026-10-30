@@ -21,13 +21,7 @@ const pool = require('../db');
 
 const router = express.Router();
 
-const SHOP_TYPES = [
-  { key: 'independent', label: 'Independent' },
-  { key: 'boutique',    label: 'Boutique' },
-  { key: 'brand',       label: 'Brand' },
-  { key: 'reseller',    label: 'Reseller' },
-  { key: 'chain',       label: 'Chain' },
-];
+
 
 const VISIBILITY_SQL = `(
   s.is_platform_owned = TRUE
@@ -53,8 +47,16 @@ function isPositiveInteger(v) {
 // GET /api/shops/meta/types — fixed shop type taxonomy for mobile filter chips
 // Must be registered BEFORE /shops/:slug or Express treats "meta" as a slug.
 // ---------------------------------------------------------------------------
-router.get('/shops/meta/types', (_req, res) => {
-  res.json({ data: SHOP_TYPES });
+router.get('/shops/meta/types', async (_req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT key, label FROM shop_types WHERE is_active = TRUE ORDER BY sort_order ASC`
+    );
+    res.json({ data: result.rows });
+  } catch (error) {
+    console.error('Failed to fetch shop types:', error.message);
+    res.status(500).json({ error: 'An unexpected server error occurred.' });
+  }
 });
 
 // ---------------------------------------------------------------------------

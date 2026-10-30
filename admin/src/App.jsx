@@ -13,6 +13,7 @@ import Orders from './pages/Orders.jsx';
 import ProductTypes from './pages/ProductTypes.jsx';
 import AdminBell from './components/AdminBell.jsx';
 import LensOptions from './pages/LensOptions.jsx';
+import ShopTypes from './pages/ShopTypes.jsx';
 import {
   Bell,
   ClipboardList,
@@ -41,13 +42,14 @@ const NAV = [
   { id: 'dashboard',   label: 'Dashboard',   icon: Home,          role: 'all' },
   { id: 'products',    label: 'Products',    icon: Package,       role: 'all' },
   { id: 'orders',      label: 'Orders',      icon: ClipboardList, role: 'all' },
-  { id: 'sellers',     label: 'Sellers',     icon: Store,         role: 'owner' },
+  { id: 'sellers',     label: 'Shops',     icon: Store,         role: 'owner' },
   { id: 'categories',  label: 'Categories',  icon: Folder,        role: 'owner' },
   { id: 'brands',      label: 'Brands',      icon: Tag,           role: 'owner' },
   { id: 'variants',    label: 'Variants',    icon: List,          role: 'all' },
   { id: 'lensOptions', label: 'Lens Options',icon: Eye,           role: 'owner' },
   { id: 'images',      label: 'Images',      icon: ImageIcon,     role: 'all' },
   { id: 'productTypes',label: 'Product Types',icon: Layers,       role: 'owner' },
+    { id: 'shopTypes', label: 'Shop Types', icon: Layers, role: 'owner' },
   { id: 'settings',    label: 'Settings',    icon: SettingsIcon,  role: 'all' },
 ];
 
@@ -73,6 +75,7 @@ function Shell({ admin, onSignOut }) {
       case 'lensOptions':  return <LensOptions />;
       case 'images':       return <Images />;
       case 'productTypes': return <ProductTypes />;
+            case 'shopTypes':   return <ShopTypes />;
       case 'settings':     return <Settings />;
       default:             return null;
     }

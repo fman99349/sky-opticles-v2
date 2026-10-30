@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "994136538721",
+    "project_id": "diamonddeeapp",
+    "storage_bucket": "diamonddeeapp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:994136538721:android:9d08bff2d9e9b8fde1b420",
+        "android_client_info": {
+          "package_name": "com.diamonddee.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDjwujoe9xBgKkZSUDo1a24N0qsQgC6DXk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,18 +1,32 @@
-// Turn a stored relative file path into an absolute URL for clients.
-//
-// The database stores product image paths as `/uploads/products/abc.jpg`.
-// Mobile and admin need a full URL like `http://10.252.93.80:3000/uploads/products/abc.jpg`.
-// We derive host and protocol from the incoming request, so the URL is always
-// correct for whichever address the client used to reach us — and IP changes
-// do not require any database update.
+// backend/src/utils/url.js
 
-function toAbsoluteUrl(req, value) {
-  if (!value || typeof value !== 'string') return value;
-  if (value.startsWith('http://') || value.startsWith('https://')) {
-    return value; // already an external URL, leave untouched
+function toAbsoluteUrl(req, pathStr) {
+  if (!pathStr) return null;
+  if (typeof pathStr !== 'string') return pathStr;
+  
+  // If it's already an absolute URL, leave it alone
+  if (pathStr.startsWith('http://') || pathStr.startsWith('https://')) {
+    return pathStr;
   }
-  if (!value.startsWith('/')) return value; // not a path we manage
-  return `${req.protocol}://${req.get('host')}${value}`;
+
+  // 1. Prefer PUBLIC_API_URL (which is set to your https ngrok URL).
+  // We strip the /api part so we just get the root domain.
+  const publicApiUrl = process.env.PUBLIC_API_URL;
+  if (publicApiUrl) {
+    try {
+      const urlObj = new URL(publicApiUrl);
+      return `${urlObj.protocol}//${urlObj.host}${pathStr}`;
+    } catch (e) {
+      // fall through if the URL is malformed
+    }
+  }
+
+  // 2. Fallback to proxy headers (x-forwarded-proto / x-forwarded-host)
+  // This is what ngrok uses.
+  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+  const host = req.headers['x-forwarded-host'] || req.headers.host;
+
+  return `${proto}://${host}${pathStr}`;
 }
 
 module.exports = { toAbsoluteUrl };

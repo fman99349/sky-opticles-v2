@@ -1,33 +1,30 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Dimensions,
   FlatList,
   Image,
   Modal,
   Pressable,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Feather } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 
 import { useAuth } from '../auth/AuthContext';
 import { useCart } from '../cart/CartContext';
 import { useCurrency } from '../utils/CurrencyContext';
 import {
-  applyFilters,
-  buildTabHierarchy,
-  imageFor,
-  price,
-} from '../utils/product';
-import {
   fetchProducts,
   fetchCategories,
+  fetchCurrencies,
   listMyOrders,
   getMyOrder,
   initiatePayfastPayment,
@@ -36,6 +33,12 @@ import {
   updateAddress,
   deleteAddress,
 } from '../utils/api';
+import {
+  applyFilters,
+  buildTabHierarchy,
+  imageFor,
+  price,
+} from '../utils/product';
 import {
   configSummary,
   configTotalDelta,
@@ -46,14 +49,11 @@ import ProductCard from '../components/ProductCard';
 import FilterTabs from '../components/FilterTabs';
 import ConditionDropdown from '../components/ConditionDropdown';
 import PrimaryButton from '../components/PrimaryButton';
-import NotificationIcon from '../components/NotificationIcon';
 import BottomTabs from '../components/BottomTabs';
-import { CartIcon } from '../components/Icons';
 import OrderTracker from '../components/OrderTracker';
 import CheckoutScreen from './CheckoutScreen';
 import AddressModal from '../components/AddressModal';
 import { useNotifications } from '../notifications/NotificationContext';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { dashStyles as d } from './dashboardStyles';
 import { shopStyles as s } from './shopStyles';
 import ShopListScreen from './ShopListScreen';
@@ -91,35 +91,27 @@ function formatDeliveryDate(isoString) {
 // ---------------------------------------------------------------------------
 // Top Bar
 // ---------------------------------------------------------------------------
-function TopBar({ user, cartCount, onBell, onCart }) {
-  const { currency, changeCurrency } = useCurrency();
+function TopBar({ user, cartCount, onBell, onCart, insets }) {
   const { unreadCount } = useNotifications();
-  const firstName = user && user.name ? user.name.split(' ')[0] : '';
+  const displayName = user && user.name ? user.name : 'Customer';
 
   return (
-    <View style={d.topBar}>
+    <View style={[d.topBar, { paddingTop: insets.top > 0 ? insets.top + 8 : 14 }]}>
       <View style={d.greetingWrap}>
         <Text style={d.greetingHi}>WELCOME BACK</Text>
-        <Text style={d.greetingName} numberOfLines={1}>{firstName || 'Customer'}</Text>
+        <Text style={d.greetingName} numberOfLines={1}>{displayName}</Text>
       </View>
 
       <View style={d.topActions}>
-        <Pressable
-          onPress={() => changeCurrency(currency === 'ZAR' ? 'USD' : currency === 'USD' ? 'GBP' : 'ZAR')}
-          style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, backgroundColor: '#1D3044', marginRight: 4 }}
-        >
-          <Text style={{ color: GOLD, fontSize: 11, fontWeight: '900' }}>{currency} ▼</Text>
-        </Pressable>
-
         <Pressable onPress={onBell} style={d.iconBtn} accessibilityLabel="Notifications">
-          <NotificationIcon color={GOLD} size={22} />
+          <Feather name="bell" size={22} color={GOLD} />
           {unreadCount > 0 && (
             <View style={d.iconBadge}><Text style={d.iconBadgeText}>{unreadCount}</Text></View>
           )}
         </Pressable>
 
         <Pressable onPress={onCart} style={d.iconBtn} accessibilityLabel={`Cart, ${cartCount} items`}>
-          <CartIcon color={GOLD} size={22} />
+          <Feather name="shopping-cart" size={22} color={GOLD} />
           {cartCount > 0 && (
             <View style={d.iconBadge}><Text style={d.iconBadgeText}>{cartCount}</Text></View>
           )}
@@ -151,6 +143,7 @@ function OrderDetailModal({ orderId, onClose }) {
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     let cancelled = false;
@@ -170,13 +163,13 @@ function OrderDetailModal({ orderId, onClose }) {
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={{ flex: 1, backgroundColor: NAVY }}>
+      <View style={{ flex: 1, backgroundColor: NAVY, paddingTop: insets.top }}>
         <View style={{ paddingHorizontal: 20, paddingVertical: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#1D3044' }}>
           <Text style={{ color: GOLD, fontSize: 12, fontWeight: '900', letterSpacing: 1.4 }}>{order ? order.order_number : 'ORDER DETAILS'}</Text>
           <Pressable onPress={onClose} hitSlop={12}><Text style={{ color: GOLD, fontSize: 11, fontWeight: '900', letterSpacing: 1.2 }}>CLOSE</Text></Pressable>
         </View>
 
-        <ScrollView style={{ flex: 1, backgroundColor: CREAM }} contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
+        <ScrollView style={{ flex: 1, backgroundColor: CREAM }} contentContainerStyle={{ padding: 20, paddingBottom: 40 + insets.bottom }}>
           {loading && <ActivityIndicator color={TEAL} style={{ marginTop: 40 }} />}
           {error ? <Text style={{ color: '#C0392B', fontSize: 13 }}>{error}</Text> : null}
 
@@ -246,21 +239,10 @@ function OrderDetailModal({ orderId, onClose }) {
                 <Text style={{ fontSize: 11, color: MUTED, marginTop: 8 }}>{order.customer.phone}</Text>
               </View>
 
-              {/* Estimated Delivery Date */}
-              {order.estimated_delivery_date && (
-                <View style={{ backgroundColor: '#F1F9F8', borderWidth: 1, borderColor: 'rgba(46,141,134,0.3)', borderRadius: 6, padding: 16 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '900', letterSpacing: 1.4, color: TEAL, marginBottom: 4 }}>
-                    ESTIMATED DELIVERY
-                  </Text>
-                  <Text style={{ fontSize: 15, fontWeight: '900', color: INK }}>
-                    {formatDeliveryDate(order.estimated_delivery_date)}
-                  </Text>
-                </View>
-              )}
             </>
           )}
         </ScrollView>
-      </SafeAreaView>
+      </View>
     </Modal>
   );
 }
@@ -319,7 +301,6 @@ function OrdersTab({ user, onGoToShop }) {
     setPayingOrderId(order.id);
 
     try {
-      // 1. Ask backend to create the PayFast session
       const result = await initiatePayfastPayment(token, order.id);
       const url = result?.data?.redirect_url;
 
@@ -329,22 +310,14 @@ function OrdersTab({ user, onGoToShop }) {
         return;
       }
 
-      // 2. Open the PayFast page in an in-app browser (Custom Tab / SFSafariVC).
-      //    The promise resolves when the user dismisses the browser.
-      const browserResult = await WebBrowser.openBrowserAsync(url, {
-        // Brand the browser chrome to match the app
+      await WebBrowser.openBrowserAsync(url, {
         toolbarColor: '#101D2C',
         controlsColor: '#D7B987',
-        // Force a close button so the user can exit even if the page doesn't
         enableBarCollapsing: true,
         showTitle: true,
-        // iOS: dismisses the browser on this URL — the "Payment received"
-        // thank-you page from our backend. Nice UX touch.
         dismissButtonStyle: 'close',
       });
 
-      // 3. Whether the user paid or cancelled, poll the backend.
-      //    If the ITN already fired during payment, first poll succeeds instantly.
       const paid = await pollForPaid(order.id, order.order_number);
 
       if (paid) {
@@ -515,9 +488,20 @@ function ProductsView({ products, categories, loading, error, onRetry, onOpenPro
   );
 }
 
-function ShopTab({ products, categories, loading, error, onRetry, onOpenProduct, onAddToCart }) {
-  const [subTab, setSubTab] = useState('products');
+function ShopTab({ products, categories, loading, error, onRetry, onOpenProduct, onAddToCart, initialSubTab = 'shops' }) {
+  const { width } = Dimensions.get('window');
+  const [subTab, setSubTab] = useState(initialSubTab);
   const [selectedShopSlug, setSelectedShopSlug] = useState(null);
+  const scrollRef = useRef(null);
+
+  useEffect(() => {
+    if (initialSubTab === 'products') {
+      const timer = setTimeout(() => {
+        scrollRef.current?.scrollTo({ x: width, animated: false });
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [initialSubTab, width]);
 
   if (selectedShopSlug) {
     return (
@@ -530,36 +514,59 @@ function ShopTab({ products, categories, loading, error, onRetry, onOpenProduct,
     );
   }
 
+  const goToTab = (tab) => {
+    setSubTab(tab);
+    scrollRef.current?.scrollTo({
+      x: tab === 'shops' ? 0 : width,
+      animated: true,
+    });
+  };
+
   return (
     <View style={{ flex: 1 }}>
       <View style={s.segmentRow}>
         <Pressable
-          onPress={() => setSubTab('products')}
-          style={[s.segmentBtn, subTab === 'products' && s.segmentBtnActive]}
-        >
-          <Text style={[s.segmentText, subTab === 'products' && s.segmentTextActive]}>PRODUCTS</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => setSubTab('shops')}
+          onPress={() => goToTab('shops')}
           style={[s.segmentBtn, subTab === 'shops' && s.segmentBtnActive]}
         >
           <Text style={[s.segmentText, subTab === 'shops' && s.segmentTextActive]}>SHOPS</Text>
         </Pressable>
+        <Pressable
+          onPress={() => goToTab('products')}
+          style={[s.segmentBtn, subTab === 'products' && s.segmentBtnActive]}
+        >
+          <Text style={[s.segmentText, subTab === 'products' && s.segmentTextActive]}>PRODUCTS</Text>
+        </Pressable>
       </View>
 
-      {subTab === 'products' ? (
-        <ProductsView
-          products={products}
-          categories={categories}
-          loading={loading}
-          error={error}
-          onRetry={onRetry}
-          onOpenProduct={onOpenProduct}
-          onAddToCart={onAddToCart}
-        />
-      ) : (
-        <ShopListScreen onOpenShop={setSelectedShopSlug} />
-      )}
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        directionalLockEnabled={true}
+        onMomentumScrollEnd={(e) => {
+          const page = Math.round(e.nativeEvent.contentOffset.x / width);
+          setSubTab(page === 0 ? 'shops' : 'products');
+        }}
+        style={{ flex: 1 }}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={{ width }}>
+          <ShopListScreen onOpenShop={setSelectedShopSlug} />
+        </View>
+        <View style={{ width }}>
+          <ProductsView
+            products={products}
+            categories={categories}
+            loading={loading}
+            error={error}
+            onRetry={onRetry}
+            onOpenProduct={onOpenProduct}
+            onAddToCart={onAddToCart}
+          />
+        </View>
+      </ScrollView>
     </View>
   );
 }
@@ -619,13 +626,16 @@ function CartTab({ onCheckout, onGoToShop }) {
   );
 }
 
-function AccountTab({ user, onSignOut }) {
+function AccountTab({ user, onSignOut, availableCurrencies = [] }) {
   const { updateProfile, token } = useAuth();
+  const { currency, changeCurrency } = useCurrency(); 
   const [editing, setEditing] = useState(null);
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  
+  const [currencyModalOpen, setCurrencyModalOpen] = useState(false);
 
   const [addresses, setAddresses] = useState([]);
   const [loadingAddresses, setLoadingAddresses] = useState(false);
@@ -657,7 +667,9 @@ function AccountTab({ user, onSignOut }) {
       setTimeout(() => setSuccess(''), 2500);
     } catch (e) {
       setError(e.message || 'Could not save.');
-    } finally { setSaving(false); }
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleSaveAddress = async (form) => {
@@ -725,6 +737,32 @@ function AccountTab({ user, onSignOut }) {
       </View>
 
       <View style={{ marginTop: 10 }}>
+        <Text style={d.sectionTitle}>PREFERRED CURRENCY</Text>
+        <Text style={d.sectionSubtitle}>Choose how prices are displayed across the app.</Text>
+        
+        <Pressable 
+          onPress={() => setCurrencyModalOpen(true)}
+          style={{
+            marginTop: 12,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            backgroundColor: WHITE,
+            borderWidth: 1,
+            borderColor: BORDER,
+            borderRadius: 8,
+            paddingHorizontal: 16,
+            paddingVertical: 14,
+          }}
+        >
+          <Text style={{ fontSize: 15, fontWeight: '800', color: INK }}>
+            {currency}
+          </Text>
+          <Feather name="chevron-down" size={20} color={MUTED} />
+        </Pressable>
+      </View>
+
+      <View style={{ marginTop: 20 }}>
         <Text style={d.sectionTitle}>SAVED ADDRESSES</Text>
         <Text style={d.sectionSubtitle}>Manage your delivery locations.</Text>
 
@@ -760,6 +798,43 @@ function AccountTab({ user, onSignOut }) {
       <Pressable onPress={onSignOut} style={d.signOutBtn}><Text style={d.signOutBtnText}>SIGN OUT</Text></Pressable>
 
       {addressModalOpen && <AddressModal visible={addressModalOpen} initialData={editingAddress} onClose={() => setAddressModalOpen(false)} onSave={handleSaveAddress} />}
+
+      {/* Currency Picker Modal */}
+      <Modal visible={currencyModalOpen} transparent animationType="fade" onRequestClose={() => setCurrencyModalOpen(false)}>
+        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }} onPress={() => setCurrencyModalOpen(false)}>
+          <View style={{ backgroundColor: CREAM, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '60%' }}>
+            <View style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: BORDER, alignItems: 'center' }}>
+              <Text style={{ fontSize: 16, fontWeight: '900', color: INK }}>Select Currency</Text>
+            </View>
+            <ScrollView>
+              {availableCurrencies.map((c) => (
+                <Pressable
+                  key={c.code}
+                  onPress={() => {
+                    changeCurrency(c.code);
+                    setCurrencyModalOpen(false);
+                  }}
+                  style={{
+                    padding: 18,
+                    borderBottomWidth: 1,
+                    borderBottomColor: BORDER,
+                    backgroundColor: currency === c.code ? 'rgba(215,185,135,0.1)' : 'transparent',
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ fontSize: 16, fontWeight: currency === c.code ? '900' : '600', color: INK }}>
+                    {c.code}
+                  </Text>
+                  {currency === c.code && <Feather name="check" size={20} color={TEAL} />}
+                </Pressable>
+              ))}
+            </ScrollView>
+            <View style={{ paddingBottom: 40 }} />
+          </View>
+        </Pressable>
+      </Modal>
     </ScrollView>
   );
 }
@@ -807,13 +882,15 @@ function NotificationsView({ onClose }) {
   );
 }
 
-export default function DashboardScreen({ onOpenProduct }) {
+export default function DashboardScreen({ onOpenProduct, initialTab = 'shop', initialSubTab = 'shops' }) {
   const { user, signOut } = useAuth();
   const { addItem, count } = useCart();
   const { currency } = useCurrency();
-    const insets = useSafeAreaInsets();
+  const insets = useSafeAreaInsets();
 
-  const [tab, setTab] = useState('shop');
+  const [tab, setTab] = useState(initialTab);
+  const [availableCurrencies, setAvailableCurrencies] = useState([{ code: 'ZAR', rate: 1 }]);
+  
   const [showNotifications, setShowNotifications] = useState(false);
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -834,9 +911,14 @@ export default function DashboardScreen({ onOpenProduct }) {
   const loadProducts = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const [prodData, catData] = await Promise.all([fetchProducts(currency), fetchCategories()]);
+      const [prodData, catData, currData] = await Promise.all([
+        fetchProducts(currency), 
+        fetchCategories(),
+        fetchCurrencies()
+      ]);
       setProducts(prodData);
       setCategories(catData);
+      setAvailableCurrencies(currData || [{ code: 'ZAR', rate: 1 }]);
     } catch {
       setError('We could not connect to the catalogue. Check that the backend is running and your phone can reach your computer.');
     } finally { setLoading(false); }
@@ -865,17 +947,17 @@ export default function DashboardScreen({ onOpenProduct }) {
 
   const renderBody = () => {
     if (showNotifications) return <NotificationsView onClose={() => setShowNotifications(false)} />;
-    if (tab === 'shop') return <ShopTab products={products} categories={categories} loading={loading} error={error} onRetry={loadProducts} onOpenProduct={onOpenProduct} onAddToCart={handleAddToCart} />;
+    if (tab === 'shop') return <ShopTab products={products} categories={categories} loading={loading} error={error} onRetry={loadProducts} onOpenProduct={onOpenProduct} onAddToCart={handleAddToCart} initialSubTab={initialSubTab} />;
     if (tab === 'orders') return <OrdersTab user={user} onGoToShop={goToShop} />;
     if (tab === 'cart') return <CartTab onCheckout={() => setCheckoutMode(true)} onGoToShop={goToShop} />;
-    if (tab === 'account') return <AccountTab user={user} onSignOut={signOut} />;
+    if (tab === 'account') return <AccountTab user={user} onSignOut={signOut} availableCurrencies={availableCurrencies} />;
     return null;
   };
 
   return (
-    <SafeAreaView style={d.container}>
+    <View style={d.container}>
       <StatusBar barStyle="light-content" backgroundColor={NAVY} />
-      <TopBar user={user} cartCount={count} onBell={() => setShowNotifications(true)} onCart={goToCart} />
+      <TopBar user={user} cartCount={count} onBell={() => setShowNotifications(true)} onCart={goToCart} insets={insets} />
 
       {welcomeVisible && !showNotifications && (
         <View style={{ backgroundColor: GOLD, paddingVertical: 10, paddingHorizontal: 20, alignItems: 'center' }}>
@@ -891,12 +973,10 @@ export default function DashboardScreen({ onOpenProduct }) {
         </View>
       ) : null}
 
-      {/* Bottom nav — wrapped to pad above the Android system navigation bar.
-          Without this, the tabs sit under the OS buttons and touches are lost
-          to home/back/recents. */}
-      <View style={{ paddingBottom: insets.bottom, backgroundColor: '#101D2C' }}>
+      {/* Bottom nav — wrapped to pad above the Android system navigation bar. */}
+      <View style={{ paddingBottom: insets.bottom, backgroundColor: WHITE }}>
         <BottomTabs active={showNotifications ? null : tab} onChange={(t) => { setShowNotifications(false); setTab(t); }} cartCount={count} />
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
