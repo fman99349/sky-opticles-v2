@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -18,7 +19,6 @@ import { useAuth } from '../auth/AuthContext';
 
 const C = { navy: '#101D2C', muted: '#7C8792' };
 
-// Key used to store the last successful login
 const LAST_LOGIN_KEY = 'sky_last_login';
 
 export default function SignInScreen({ onBack, onGoToSignUp, onForgotPassword, onOpenShopApplication }) {
@@ -29,7 +29,6 @@ export default function SignInScreen({ onBack, onGoToSignUp, onForgotPassword, o
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  // 1. Load saved credentials on mount
   useEffect(() => {
     const loadSaved = async () => {
       try {
@@ -55,19 +54,25 @@ export default function SignInScreen({ onBack, onGoToSignUp, onForgotPassword, o
     setSubmitting(true);
     try {
       await signIn({ email: email.trim(), password });
-      
-      // 2. Save credentials on successful login
-      // Note: For production, consider removing the password from this save.
       await AsyncStorage.setItem(
-        LAST_LOGIN_KEY, 
+        LAST_LOGIN_KEY,
         JSON.stringify({ email: email.trim(), password })
       );
-
-      // App.js detects the auth state change and routes to the dashboard.
     } catch (err) {
       setError(err.message || 'Could not sign in. Please try again.');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleOpenShopApp = () => {
+    if (onOpenShopApplication) {
+      onOpenShopApplication();
+    } else {
+      Alert.alert(
+        'Navigation Missing',
+        'The onOpenShopApplication prop was not passed from App.js to SignInScreen.'
+      );
     }
   };
 
@@ -91,8 +96,8 @@ export default function SignInScreen({ onBack, onGoToSignUp, onForgotPassword, o
       >
         <ScrollView
           style={a.scroll}
-          contentContainerStyle={a.scrollContent}
-          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={[a.scrollContent, { paddingTop: 32 }]}
+          keyboardShouldPersistTaps="always"
         >
           <Text style={a.eyebrow}>WELCOME BACK</Text>
           <Text style={a.title}>Sign in to your account</Text>
@@ -124,7 +129,6 @@ export default function SignInScreen({ onBack, onGoToSignUp, onForgotPassword, o
 
           <View style={a.field}>
             <Text style={a.label}>PASSWORD</Text>
-            {/* Custom wrapper for the password field to hold the eye icon */}
             <View style={{
               flexDirection: 'row',
               alignItems: 'center',
@@ -163,7 +167,8 @@ export default function SignInScreen({ onBack, onGoToSignUp, onForgotPassword, o
               </Pressable>
             </View>
           </View>
-                    <Pressable onPress={onForgotPassword} style={{ alignSelf: 'flex-end', marginTop: 4, marginBottom: 8 }}>
+
+          <Pressable onPress={onForgotPassword} style={{ alignSelf: 'flex-end', marginTop: 4, marginBottom: 8 }}>
             <Text style={{ fontSize: 12, color: C.teal, fontWeight: '700' }}>Forgot password?</Text>
           </Pressable>
 
@@ -190,21 +195,21 @@ export default function SignInScreen({ onBack, onGoToSignUp, onForgotPassword, o
             </Text>
           </Pressable>
 
+          {/* 🆕 Own a shop link - right after "New here? Create an account" */}
+          <Pressable
+            onPress={handleOpenShopApp}
+            style={a.shopLinkBtn}
+            hitSlop={15}
+          >
+            <Text style={a.shopLinkText}>
+              Own a shop with <Text style={a.shopLinkAccent}>DD Marketplace</Text> →
+            </Text>
+          </Pressable>
+
           <Text style={a.footnote}>
             Your account is used to identify you at checkout. You can browse
             and build a cart without signing in.
           </Text>
-
-
-
-
-
-
-          <Pressable onPress={onOpenShopApplication} style={a.shopLinkBtn}>
-  <Text style={a.shopLinkText}>
-    Own a shop with <Text style={a.shopLinkAccent}>DD Marketplace</Text> →
-  </Text>
-</Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

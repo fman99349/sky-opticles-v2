@@ -5,6 +5,7 @@ import {
   Animated,
   FlatList,
   Image,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -46,6 +47,7 @@ import DetailScreen from './screens/DetailScreen';
 import LensWizard from './screens/LensWizard';
 import VariantPicker from './components/VariantPicker';
 import IntroScreen from './screens/IntroScreen';
+import UpdateGate from './components/UpdateGate';
 
 const C = {
   navy: '#101D2C',
@@ -108,10 +110,19 @@ function WelcomeScreen({ onBrowse, onSignIn }) {
 
   const current = SLIDES[slide];
 
+  // 🆕 Platform-aware top padding:
+  //   - On Android, RN's SafeAreaView is a no-op, so we add status-bar height + breathing room.
+  //   - On iOS, SafeAreaView already handles the notch, so a small pad is enough.
+  const topPad = Platform.OS === 'android'
+    ? (StatusBar.currentHeight || 24) + 20
+    : 20;
+
   return (
     <SafeAreaView style={styles.welcomeSafe}>
       <StatusBar barStyle="light-content" backgroundColor={C.navy} />
-      <View style={styles.welcomeTop}>
+
+      {/* 🆕 Push the whole top block down */}
+      <View style={[styles.welcomeTop, { paddingTop: topPad }]}>
         <Brand />
         {user ? (
           <Pressable onPress={signOut} hitSlop={12}>
@@ -147,12 +158,12 @@ function WelcomeScreen({ onBrowse, onSignIn }) {
       </View>
 
       <View style={styles.welcomeBottom}>
-        <Typewriter 
-          text="More than a store. It's Diamond Dee." 
-          style={styles.welcomeHeadline} 
-          delay={70} 
+        <Typewriter
+          text="More than a store. It's Diamond Dee."
+          style={styles.welcomeHeadline}
+          delay={70}
         />
-        
+
         <PrimaryButton title="GET STARTED" onPress={onBrowse} />
         {!user && (
           <Pressable style={styles.secondaryLink} onPress={onSignIn}>
@@ -162,6 +173,23 @@ function WelcomeScreen({ onBrowse, onSignIn }) {
           </Pressable>
         )}
       </View>
+
+
+{/* 🆕 Own a shop link - right after "New here? Create an account" */}
+          <Pressable
+            onPress={handleOpenShopApp}
+            style={a.shopLinkBtn}
+            hitSlop={15}
+          >
+            <Text style={a.shopLinkText}>
+              Own a shop with <Text style={a.shopLinkAccent}>DD Marketplace</Text> →
+            </Text>
+          </Pressable>
+
+
+
+
+      
     </SafeAreaView>
   );
 }
@@ -230,12 +258,7 @@ function CatalogueScreen({ onBack, onProduct, onOpenCart, onAddToCart }) {
           </Pressable>
 
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Pressable
-              onPress={() => changeCurrency(currency === 'ZAR' ? 'USD' : currency === 'USD' ? 'GBP' : 'ZAR')}
-              style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 4, backgroundColor: '#1D3044', marginRight: 12 }}
-            >
-              <Text style={{ color: C.gold, fontSize: 11, fontWeight: '900' }}>{currency} ▼</Text>
-            </Pressable>
+            
 
             <Pressable onPress={onOpenCart} style={styles.headerCartBtn} hitSlop={10}>
               <CartIcon color={C.gold} size={22} />
@@ -269,15 +292,6 @@ function CatalogueScreen({ onBack, onProduct, onOpenCart, onAddToCart }) {
         onChildChange={setActiveChildId}
       />
 
-      <View style={styles.collectionHeader}>
-        <View>
-          <Text style={styles.collectionTitle}>THE COLLECTION</Text>
-          <Text style={styles.collectionSubtitle}>
-            {loading ? 'Discovering...' : `${filtered.length} piece${filtered.length === 1 ? '' : 's'} to explore`}
-          </Text>
-        </View>
-        <Text style={styles.collectionMark}>S / O</Text>
-      </View>
 
       {loading ? (
         <View style={styles.stateBox}>
@@ -317,7 +331,7 @@ function RootApp() {
   const { user, restoring } = useAuth();
   const [screen, setScreen] = useState('welcome');
   const [selectedProduct, setSelectedProduct] = useState(null);
-    const [returnTab, setReturnTab] = useState('shops');
+  const [returnTab, setReturnTab] = useState('shops');
   const { addItem } = useCart();
 
   useEffect(() => {
@@ -330,7 +344,9 @@ function RootApp() {
         <StatusBar barStyle="light-content" backgroundColor={C.navy} />
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <ActivityIndicator size="large" color={C.gold} />
-          <Text style={{ color: C.white, marginTop: 14, fontSize: 12, letterSpacing: 1.2 }}>LOADING YOUR SESSION...</Text>
+          <Text style={{ color: C.white, marginTop: 14, fontSize: 12, letterSpacing: 1.2 }}>
+            LOADING YOUR SESSION...
+          </Text>
         </View>
       </SafeAreaView>
     );
@@ -342,36 +358,56 @@ function RootApp() {
     setScreen('cart');
   };
 
-   if (user && screen !== 'signin' && screen !== 'signup') {
+  if (screen === 'shopApplication') {
+    return <ShopApplicationScreen onBack={() => setScreen('welcome')} />;
+  }
+
+  if (user && screen !== 'signin' && screen !== 'signup') {
     if (screen === 'detail' && selectedProduct) {
       return (
-        <DetailScreen 
-          product={selectedProduct} 
-          onBack={() => { 
-            setScreen('dashboard'); 
-            setReturnTab('products'); // Forces the Products tab to open
-          }} 
-          onAddToCart={handleAddToCart} 
+        <DetailScreen
+          product={selectedProduct}
+          onBack={() => {
+            setScreen('dashboard');
+            setReturnTab('products');
+          }}
+          onAddToCart={handleAddToCart}
         />
       );
     }
     return (
-      <DashboardScreen 
+      <DashboardScreen
         initialSubTab={returnTab}
-        onOpenProduct={(product) => { 
-          setSelectedProduct(product); 
-          setScreen('detail'); 
-        }} 
+        onOpenProduct={(product) => {
+          setSelectedProduct(product);
+          setScreen('detail');
+        }}
       />
     );
   }
 
   if (screen === 'catalogue') {
-    return <CatalogueScreen onBack={() => setScreen('welcome')} onProduct={(product) => { setSelectedProduct(product); setScreen('detail'); }} onOpenCart={() => setScreen('cart')} onAddToCart={handleAddToCart} />;
+    return (
+      <CatalogueScreen
+        onBack={() => setScreen('welcome')}
+        onProduct={(product) => {
+          setSelectedProduct(product);
+          setScreen('detail');
+        }}
+        onOpenCart={() => setScreen('cart')}
+        onAddToCart={handleAddToCart}
+      />
+    );
   }
 
   if (screen === 'detail' && selectedProduct) {
-    return <DetailScreen product={selectedProduct} onBack={() => setScreen('catalogue')} onAddToCart={handleAddToCart} />;
+    return (
+      <DetailScreen
+        product={selectedProduct}
+        onBack={() => setScreen('catalogue')}
+        onAddToCart={handleAddToCart}
+      />
+    );
   }
 
   if (screen === 'cart') {
@@ -390,23 +426,35 @@ function RootApp() {
 
   if (screen === 'signin') {
     return (
-      <SignInScreen 
-        onBack={() => setScreen('welcome')} 
-        onGoToSignUp={() => setScreen('signup')} 
+      <SignInScreen
+        onBack={() => setScreen('welcome')}
+        onGoToSignUp={() => setScreen('signup')}
         onForgotPassword={() => setScreen('forgotPassword')}
+        onOpenShopApplication={() => setScreen('shopApplication')}
       />
     );
   }
-  
+
   if (screen === 'signup') {
-    return <SignUpScreen onBack={() => setScreen('welcome')} onGoToSignIn={() => setScreen('signin')} />;
+    return (
+      <SignUpScreen
+        onBack={() => setScreen('welcome')}
+        onGoToSignIn={() => setScreen('signin')}
+        onOpenShopApplication={() => setScreen('shopApplication')}
+      />
+    );
   }
 
   if (screen === 'forgotPassword') {
     return <ForgotPasswordScreen onBack={() => setScreen('signin')} />;
   }
 
-  return <WelcomeScreen onBrowse={() => setScreen('catalogue')} onSignIn={() => setScreen('signin')} />;
+  return (
+    <WelcomeScreen
+      onBrowse={() => setScreen('catalogue')}
+      onSignIn={() => setScreen('signin')}
+    />
+  );
 }
 
 function AppWithIntro() {
@@ -424,7 +472,9 @@ export default function App() {
         <NotificationProvider>
           <CurrencyProvider>
             <CartProvider>
-              <AppWithIntro />
+              <UpdateGate>
+                <AppWithIntro />
+              </UpdateGate>
             </CartProvider>
           </CurrencyProvider>
         </NotificationProvider>

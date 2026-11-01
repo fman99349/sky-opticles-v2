@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -24,11 +25,10 @@ export default function SignUpScreen({ onBack, onGoToSignIn, onOpenShopApplicati
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
-  
-  // New state for toggling password visibility
+
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  
+
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -55,13 +55,23 @@ export default function SignUpScreen({ onBack, onGoToSignIn, onOpenShopApplicati
         email: email.trim(),
         password,
       });
-      // App.js detects the auth state change and routes to the dashboard.
     } catch (err) {
       setError(
         err.message || 'Could not create your account. Please try again.'
       );
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleOpenShopApp = () => {
+    if (onOpenShopApplication) {
+      onOpenShopApplication();
+    } else {
+      Alert.alert(
+        'Navigation Missing',
+        'The onOpenShopApplication prop was not passed from App.js to SignUpScreen.'
+      );
     }
   };
 
@@ -85,8 +95,8 @@ export default function SignUpScreen({ onBack, onGoToSignIn, onOpenShopApplicati
       >
         <ScrollView
           style={a.scroll}
-          contentContainerStyle={a.scrollContent}
-          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={[a.scrollContent, { paddingTop: 32 }]}
+          keyboardShouldPersistTaps="always"
         >
           <Text style={a.eyebrow}>JOIN DIAMOND DEE</Text>
           <Text style={a.title}>Create your account</Text>
@@ -132,14 +142,14 @@ export default function SignUpScreen({ onBack, onGoToSignIn, onOpenShopApplicati
 
           <View style={a.field}>
             <Text style={a.label}>PASSWORD</Text>
-            <View style={{ 
-              flexDirection: 'row', 
-              alignItems: 'center', 
-              borderWidth: 1, 
-              borderColor: '#E7E3DC', 
-              borderRadius: 6, 
-              backgroundColor: '#FFFFFF', 
-              marginBottom: 8 
+            <View style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              borderWidth: 1,
+              borderColor: '#E7E3DC',
+              borderRadius: 6,
+              backgroundColor: '#FFFFFF',
+              marginBottom: 8
             }}>
               <TextInput
                 value={password}
@@ -162,14 +172,14 @@ export default function SignUpScreen({ onBack, onGoToSignIn, onOpenShopApplicati
 
           <View style={a.field}>
             <Text style={a.label}>CONFIRM PASSWORD</Text>
-            <View style={{ 
-              flexDirection: 'row', 
-              alignItems: 'center', 
-              borderWidth: 1, 
-              borderColor: '#E7E3DC', 
-              borderRadius: 6, 
-              backgroundColor: '#FFFFFF', 
-              marginBottom: 8 
+            <View style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              borderWidth: 1,
+              borderColor: '#E7E3DC',
+              borderRadius: 6,
+              backgroundColor: '#FFFFFF',
+              marginBottom: 8
             }}>
               <TextInput
                 value={confirm}
@@ -211,16 +221,21 @@ export default function SignUpScreen({ onBack, onGoToSignIn, onOpenShopApplicati
             </Text>
           </Pressable>
 
+          {/* 🆕 Own a shop link - right after "Already have an account? Sign in" */}
+          <Pressable
+            onPress={handleOpenShopApp}
+            style={a.shopLinkBtn}
+            hitSlop={15}
+          >
+            <Text style={a.shopLinkText}>
+              Own a shop with <Text style={a.shopLinkAccent}>DD Marketplace</Text> →
+            </Text>
+          </Pressable>
+
           <Text style={a.footnote}>
             By creating an account, you agree to be contacted about your orders
             only. No marketing without your consent.
           </Text>
-
-          <Pressable onPress={onOpenShopApplication} style={a.shopLinkBtn}>
-  <Text style={a.shopLinkText}>
-    Own a shop with <Text style={a.shopLinkAccent}>DD Marketplace</Text> →
-  </Text>
-</Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

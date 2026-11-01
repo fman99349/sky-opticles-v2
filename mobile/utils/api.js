@@ -354,19 +354,14 @@ export async function fetchShopProducts(slug, currency = 'ZAR', filters = {}) {
 
 // ─── Seller applications ──────────────────────────────────────────────────
 export async function submitShopApplication(payload) {
-  const res = await fetch(`${API_BASE_URL}/seller-applications`, {
+  const result = await request('/seller-applications', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  const json = await res.json();
-  if (!res.ok) throw new Error(json.error || 'Could not submit application.');
-  return json.data;
+  return result.data;
 }
 
 export async function getShopApplicationStatus(referenceCode) {
-  const res = await fetch(`${API_BASE_URL}/seller-applications/${encodeURIComponent(referenceCode)}`);
-  const json = await res.json();
-  if (!res.ok) throw new Error(json.error || 'Application not found.');
-  return json.data;
+  const result = await request(`/seller-applications/${encodeURIComponent(referenceCode)}`);
+  return result.data;
 }

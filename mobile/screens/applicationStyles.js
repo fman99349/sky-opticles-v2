@@ -2,7 +2,7 @@ import { StyleSheet } from 'react-native';
 
 const C = {
   navy: '#101D2C',
-  navyLight: '#1D3044',
+  navySoft: '#1D3044',
   cream: '#F8F5EF',
   white: '#FFFFFF',
   gold: '#D7B987',
@@ -10,169 +10,366 @@ const C = {
   muted: '#7C8792',
   border: '#E7E3DC',
   teal: '#2E8D86',
+  soft: 'rgba(16,29,44,0.04)',
 };
 
 export const a = StyleSheet.create({
   shell: { flex: 1, backgroundColor: C.cream },
 
-  // Header
-  header: { backgroundColor: C.navy, paddingTop: 8, paddingBottom: 14 },
+  header: {
+    paddingTop: 6,
+    paddingBottom: 10,
+    paddingHorizontal: 20,
+  },
   headerRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 16, height: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    height: 44,
   },
-  backBtn: { paddingVertical: 6, paddingRight: 12 },
-  backText: { color: C.gold, fontSize: 11, fontWeight: '900', letterSpacing: 1.5 },
-  headerTitle: {
-    flex: 1, textAlign: 'center',
-    color: C.white, fontSize: 15, fontWeight: '900', letterSpacing: 2,
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: -8,
   },
-  headerSpacer: { width: 60 },
+  backBtnGhost: {
+    width: 40,
+  },
+  stepLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.8,
+    color: C.muted,
+    textTransform: 'uppercase',
+  },
+  progressTrack: {
+    height: 2,
+    backgroundColor: C.border,
+    marginHorizontal: 20,
+    borderRadius: 1,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: C.navy,
+  },
 
-  // Scroll
-  scroll: { flex: 1 },
-  scrollContent: { padding: 18, paddingBottom: 40 },
-
-  // Hero
-  hero: { marginBottom: 20 },
-  heroEyebrow: {
-    fontSize: 10, fontWeight: '900', letterSpacing: 3,
-    color: C.teal, marginBottom: 8,
-  },
-  heroTitle: {
-    fontSize: 26, fontWeight: '900', color: C.ink,
-    letterSpacing: -0.5, marginBottom: 8,
-  },
-  heroSub: {
-    fontSize: 13, lineHeight: 20, color: C.muted,
+  content: {
+    paddingHorizontal: 24,
+    paddingTop: 28,
+    paddingBottom: 24,
+    flexGrow: 1,
   },
 
-  // Benefits row
-  benefitsRow: {
-    flexDirection: 'row', gap: 8, marginBottom: 24,
+  stepEyebrow: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 2,
+    color: C.teal,
+    marginBottom: 10,
+    textTransform: 'uppercase',
   },
-  benefitCard: {
-    flex: 1, backgroundColor: C.white,
-    borderWidth: 1, borderColor: C.border,
-    borderRadius: 6, padding: 10,
+  stepHeading: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: C.ink,
+    letterSpacing: -0.8,
+    lineHeight: 34,
+    marginBottom: 10,
   },
-  benefitIcon: { fontSize: 20, marginBottom: 6 },
+  stepSub: {
+    fontSize: 14,
+    lineHeight: 21,
+    color: C.muted,
+    marginBottom: 28,
+  },
+
+  benefitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  benefitRowLast: {
+    borderBottomWidth: 0,
+  },
+  benefitIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(215,185,135,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+  },
+  benefitTitleWrap: { flex: 1 },
   benefitTitle: {
-    fontSize: 11, fontWeight: '900', color: C.ink,
-    letterSpacing: 0.3, marginBottom: 2,
+    fontSize: 15,
+    fontWeight: '800',
+    color: C.ink,
+    letterSpacing: -0.2,
+    marginBottom: 3,
   },
-  benefitSub: { fontSize: 9, color: C.muted, lineHeight: 12 },
-
-  // Section label
-  sectionLabel: {
-    fontSize: 10, fontWeight: '900', letterSpacing: 1.5,
-    color: C.teal, marginTop: 20, marginBottom: 12,
+  benefitSub: {
+    fontSize: 12,
+    color: C.muted,
+    lineHeight: 17,
   },
 
-  // Field
-  field: { marginBottom: 14 },
+  field: { marginBottom: 18 },
   label: {
-    fontSize: 10, fontWeight: '900', letterSpacing: 1.2,
-    color: C.muted, marginBottom: 6,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.5,
+    color: C.muted,
+    marginBottom: 8,
+    textTransform: 'uppercase',
   },
   input: {
     backgroundColor: C.white,
-    borderWidth: 1, borderColor: C.border,
-    borderRadius: 6,
-    paddingHorizontal: 14, paddingVertical: 13,
-    fontSize: 14, color: C.ink,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 15,
+    color: C.ink,
   },
-  textarea: { minHeight: 90, textAlignVertical: 'top' },
-
-  twoCol: { flexDirection: 'row', gap: 10 },
+  textarea: {
+    minHeight: 100,
+    textAlignVertical: 'top',
+    paddingTop: 14,
+  },
+  twoCol: { flexDirection: 'row', gap: 12 },
   flex1: { flex: 1 },
 
-  // Chips
   chipRow: {
-    flexDirection: 'row', flexWrap: 'wrap',
-    gap: 8, marginBottom: 8,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 24,
   },
   chip: {
-    paddingHorizontal: 14, paddingVertical: 9,
-    borderRadius: 999,
-    borderWidth: 1, borderColor: C.border,
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    borderRadius: 100,
+    borderWidth: 1.5,
+    borderColor: C.border,
     backgroundColor: C.white,
   },
-  chipActive: { backgroundColor: C.navy, borderColor: C.navy },
-  chipText: { fontSize: 11, fontWeight: '800', color: C.ink, letterSpacing: 0.3 },
-  chipTextActive: { color: C.gold },
-
-  // CTA
-  cta: {
+  chipActive: {
     backgroundColor: C.navy,
-    borderRadius: 6,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 24,
+    borderColor: C.navy,
   },
-  ctaPressed: { opacity: 0.85 },
-  ctaDisabled: { opacity: 0.6 },
-  ctaText: {
-    color: C.gold, fontSize: 12, fontWeight: '900', letterSpacing: 2,
+  chipText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: C.ink,
+  },
+  chipTextActive: {
+    color: C.gold,
   },
 
-  ctaSecondary: {
-    marginTop: 24,
+  timeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: C.border,
+    backgroundColor: C.white,
+    marginBottom: 10,
+  },
+  timeCardActive: {
+    borderColor: C.navy,
+    backgroundColor: 'rgba(215,185,135,0.10)',
+  },
+  timeRadio: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: C.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+  },
+  timeRadioActive: {
+    borderColor: C.navy,
+  },
+  timeRadioDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: C.navy,
+  },
+  timeTextWrap: { flex: 1 },
+  timeTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: C.ink,
+    marginBottom: 2,
+  },
+  timeSub: {
+    fontSize: 12,
+    color: C.muted,
+  },
+
+  reviewCard: {
+    backgroundColor: C.white,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 16,
+  },
+  reviewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
     paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: C.soft,
+  },
+  reviewRowLast: { borderBottomWidth: 0 },
+  reviewLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    color: C.muted,
+    textTransform: 'uppercase',
+    width: 100,
+  },
+  reviewValue: {
+    flex: 1,
+    fontSize: 14,
+    color: C.ink,
+    fontWeight: '600',
+  },
+  reviewEditBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  footer: {
     paddingHorizontal: 24,
-    borderRadius: 6,
-    borderWidth: 1, borderColor: C.border,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+    backgroundColor: C.cream,
+  },
+  primaryBtn: {
+    backgroundColor: C.navy,
+    borderRadius: 10,
+    paddingVertical: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  primaryBtnPressed: { opacity: 0.85 },
+  primaryBtnDisabled: { opacity: 0.5 },
+  primaryBtnText: {
+    color: C.gold,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 2,
+  },
+  footnote: {
+    fontSize: 11,
+    color: C.muted,
+    textAlign: 'center',
+    marginTop: 14,
+    lineHeight: 17,
+  },
+
+  errorText: {
+    color: '#B91C1C',
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 14,
+    paddingHorizontal: 8,
+  },
+
+  successWrap: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: 32,
+    paddingTop: 60,
+  },
+  successIconWrap: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: C.navy,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 28,
+  },
+  successTitle: {
+    fontSize: 26,
+    fontWeight: '900',
+    color: C.ink,
+    letterSpacing: -0.6,
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  successSub: {
+    fontSize: 14,
+    lineHeight: 21,
+    color: C.muted,
+    textAlign: 'center',
+    marginBottom: 32,
+  },
+  referenceBox: {
+    width: '100%',
+    backgroundColor: C.white,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderLeftWidth: 4,
+    borderLeftColor: C.gold,
+    borderRadius: 10,
+    padding: 20,
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  referenceLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.8,
+    color: C.muted,
+    marginBottom: 10,
+  },
+  referenceCode: {
+    fontSize: 24,
+    fontWeight: '900',
+    letterSpacing: 3,
+    color: C.navy,
+    marginBottom: 4,
+  },
+  referenceHint: {
+    fontSize: 11,
+    color: C.muted,
+  },
+  ctaSecondary: {
+    width: '100%',
+    paddingVertical: 15,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: C.border,
     backgroundColor: C.white,
     alignItems: 'center',
   },
   ctaSecondaryText: {
-    fontSize: 11, fontWeight: '900', letterSpacing: 1.5, color: C.ink,
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 1.8,
+    color: C.ink,
   },
-
-  footnote: {
-    marginTop: 18, fontSize: 11, lineHeight: 17,
-    color: C.muted, textAlign: 'center',
-  },
-
-  // Error
-  errorBanner: {
-    backgroundColor: 'rgba(220,38,38,0.08)',
-    borderWidth: 1, borderColor: 'rgba(220,38,38,0.3)',
-    borderRadius: 6, padding: 12, marginBottom: 16,
-  },
-  errorText: { color: '#B91C1C', fontSize: 12, fontWeight: '700' },
-
-  // Success
-  successWrap: { flex: 1, alignItems: 'center', padding: 32, paddingTop: 60 },
-  successCircle: {
-    width: 100, height: 100, borderRadius: 50,
-    backgroundColor: C.navy,
-    borderWidth: 2, borderColor: C.gold,
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 24,
-  },
-  successTitle: {
-    fontSize: 24, fontWeight: '900', color: C.ink,
-    letterSpacing: -0.5, marginBottom: 12, textAlign: 'center',
-  },
-  successSub: {
-    fontSize: 14, lineHeight: 21, color: C.muted,
-    textAlign: 'center', marginBottom: 28,
-  },
-  referenceBox: {
-    backgroundColor: C.white,
-    borderWidth: 1, borderColor: C.border,
-    borderLeftWidth: 4, borderLeftColor: C.gold,
-    borderRadius: 6, padding: 18,
-    width: '100%', alignItems: 'center',
-  },
-  referenceLabel: {
-    fontSize: 10, fontWeight: '900', letterSpacing: 2,
-    color: C.muted, marginBottom: 8,
-  },
-  referenceCode: {
-    fontSize: 22, fontWeight: '900', letterSpacing: 3,
-    color: C.navy, marginBottom: 4,
-  },
-  referenceHint: { fontSize: 10, color: C.muted },
 });

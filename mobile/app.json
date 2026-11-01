@@ -33,7 +33,10 @@
       "policy": "sdkVersion"
     },
     "updates": {
-      "url": "https://u.expo.dev/be7ab9e3-28ea-4cf8-a52f-ff46986d30bf"
+      "url": "https://u.expo.dev/be7ab9e3-28ea-4cf8-a52f-ff46986d30bf",
+      "enabled": true,
+      "checkAutomatically": "NEVER",
+      "fallbackToCacheTimeout": 0
     },
     "plugins": [
       "expo-web-browser",
