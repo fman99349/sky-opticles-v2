@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+﻿import React, { useEffect, useRef, useState } from 'react';
 import {
   Plus,
   RefreshCw,
@@ -10,6 +10,9 @@ import {
   Star,
 } from 'lucide-react';
 import { api } from '../api/client.js';
+import { useAdminAuth } from '../auth/AdminAuthContext.jsx';
+import Pagination from '../components/Pagination.jsx';
+import { useClientPagination } from '../utils/useClientPagination.js';
 
 const EMPTY_FORM = {
   name: '',
@@ -71,11 +74,7 @@ function ProductModal({
       : EMPTY_FORM
   );
 
-    // Tracks whether the admin has manually flipped the toggle in this modal
-  // session. If they have not, the toggle auto-syncs to the selected type's
-  // default whenever the type changes.
-  const [hasConfiguratorTouched, setHasConfiguratorTouched] =
-    useState(false);
+  const [hasConfiguratorTouched, setHasConfiguratorTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -93,8 +92,6 @@ function ProductModal({
   const handleTypeChange = (newKey) => {
     setForm((f) => {
       const next = { ...f, productType: newKey };
-      // Auto-sync hasConfigurator to the type's default unless the admin
-      // has explicitly overridden it in this session.
       if (!hasConfiguratorTouched) {
         const t = productTypes.find((pt) => pt.key === newKey);
         if (t) next.hasConfigurator = t.default_has_configurator;
@@ -107,11 +104,6 @@ function ProductModal({
     setHasConfiguratorTouched(true);
     setForm((f) => ({ ...f, hasConfigurator: value }));
   };
-
-
-
-
-
 
   // Load images when editing
   useEffect(() => {
@@ -353,9 +345,6 @@ function ProductModal({
                     {t.label}
                   </option>
                 ))}
-                {/* If the current value is not in the list (e.g. legacy
-                    product whose type was deleted), show it as-is so it
-                    does not silently change. */}
                 {form.productType &&
                   !productTypes.find((t) => t.key === form.productType) && (
                     <option value={form.productType}>
@@ -365,53 +354,34 @@ function ProductModal({
               </select>
             </label>
 
-
-
-
-
-          <label
-            style={{
-              flexDirection: 'row',
-              alignItems: 'flex-start',
-              gap: 10,
-              textTransform: 'none',
-              letterSpacing: 'normal',
-              fontSize: 13,
-              fontWeight: 500,
-              color: 'var(--ink)',
-              paddingTop: 8,
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={form.hasConfigurator}
-              onChange={(e) => toggleConfigurator(e.target.checked)}
-              style={{ width: 16, height: 16, marginTop: 2 }}
-            />
-            <span style={{ lineHeight: 1.45 }}>
-              <strong>Needs configurator</strong>
-              <br />
-              <span className="muted small">
-                Show the eyewear wizard (lens options, prescription) on mobile.
-                Turn off for products sold as-is — computers, kitchenware,
-                accessories.
+            <label
+              style={{
+                flexDirection: 'row',
+                alignItems: 'flex-start',
+                gap: 10,
+                textTransform: 'none',
+                letterSpacing: 'normal',
+                fontSize: 13,
+                fontWeight: 500,
+                color: 'var(--ink)',
+                paddingTop: 8,
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={form.hasConfigurator}
+                onChange={(e) => toggleConfigurator(e.target.checked)}
+                style={{ width: 16, height: 16, marginTop: 2 }}
+              />
+              <span style={{ lineHeight: 1.45 }}>
+                <strong>Needs configurator</strong>
+                <br />
+                <span className="muted small">
+                  Show the eyewear wizard (lens options, prescription) on mobile.
+                  Turn off for products sold as-is.
+                </span>
               </span>
-            </span>
-          </label>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+            </label>
 
             <label>
               Price (ZAR)
@@ -449,11 +419,6 @@ function ProductModal({
             </select>
           </label>
 
-
-
-
-
-
           <label>
             Description (optional)
             <textarea
@@ -476,7 +441,7 @@ function ProductModal({
                     disabled={uploading}
                   >
                     <Upload size={12} style={{ marginRight: 4, verticalAlign: '-2px' }} />
-                    {uploading ? 'Uploading...' : 'Upload'}
+                    {uploading ? 'Uploading…' : 'Upload'}
                   </button>
                 </div>
               )}
@@ -499,7 +464,7 @@ function ProductModal({
                 />
 
                 {loadingImages ? (
-                  <p className="muted small">Loading images...</p>
+                  <p className="muted small">Loading images…</p>
                 ) : images.length === 0 ? (
                   <p className="muted small">No images yet.</p>
                 ) : (
@@ -570,8 +535,8 @@ function ProductModal({
             <button type="submit" disabled={saving || noCategories}>
               {saving
                 ? isEdit
-                  ? 'Saving...'
-                  : 'Creating...'
+                  ? 'Saving…'
+                  : 'Creating…'
                 : isEdit
                 ? 'Save changes'
                 : 'Create product'}
@@ -587,7 +552,12 @@ function ProductModal({
 // Products page
 // ---------------------------------------------------------------------------
 export default function Products() {
+  const { admin } = useAdminAuth();
+  const isOwner = admin?.is_platform_owner === true;
+  const [scope, setScope] = useState('all');
+
   const [products, setProducts] = useState([]);
+  const { page, setPage, paged, totalPages } = useClientPagination(products, 25);
   const [categories, setCategories] = useState([]);
   const [brands, setBrands] = useState([]);
   const [productTypes, setProductTypes] = useState([]);
@@ -604,8 +574,10 @@ export default function Products() {
     setLoading(true);
     setListError('');
     try {
+      const params = { limit: 500 };
+      if (scope === 'mine') params.mine = 'true';
       const [p, c, b, t] = await Promise.all([
-        api.listMyProducts({ limit: 100 }),
+        api.listMyProducts(params),
         api.listCategories(),
         api.listBrands(),
         api.listProductTypes(),
@@ -622,8 +594,10 @@ export default function Products() {
   };
 
   useEffect(() => {
+    setPage(1);
     loadAll();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scope]);
 
   const showToast = (msg) => {
     setToast(msg);
@@ -642,13 +616,27 @@ export default function Products() {
     setModalOpen(true);
   };
 
-  const handleSaved = (result) => {
+  const handleSaved = async (result) => {
     if (result.mode === 'create') {
-      showToast(`Created "${result.product.name}" (id ${result.product.id}).`);
+      showToast(`Created "${result.product.name}". Add images below!`);
+      
+      const params = { limit: 500 };
+      if (scope === 'mine') params.mine = 'true';
+      const list = await api.listMyProducts(params);
+      setPage(1);
+      
+      setProducts(list.data || []);
+      
+      const newProduct = (list.data || []).find(p => p.id === result.product.id);
+      if (newProduct) {
+        setEditTarget(newProduct);
+        setModalMode('edit');
+        setModalOpen(true);
+      }
     } else {
       showToast(`Updated "${result.product.name}".`);
+      loadAll();
     }
-    loadAll();
   };
 
   const handleDelete = async (product) => {
@@ -673,12 +661,48 @@ export default function Products() {
           <h2 className="erp-page-title">Products</h2>
           <p className="muted small">
             {loading
-              ? 'Loading catalogue...'
+              ? 'Loading catalogue…'
               : `${products.length} active product${products.length === 1 ? '' : 's'}`}
           </p>
         </div>
 
         <div className="erp-page-actions">
+          {isOwner && (
+            <label
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                fontSize: 10,
+                fontWeight: 800,
+                letterSpacing: '0.12em',
+                textTransform: 'uppercase',
+                color: 'var(--muted)',
+              }}
+            >
+              Scope
+              <select
+                value={scope}
+                onChange={(e) => setScope(e.target.value)}
+                style={{
+                  background: 'var(--white)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 4,
+                  padding: '8px 12px',
+                  fontSize: 12,
+                  color: 'var(--ink)',
+                  outline: 'none',
+                  textTransform: 'none',
+                  letterSpacing: 'normal',
+                  fontWeight: 500,
+                }}
+              >
+                <option value="all">All shops</option>
+                <option value="mine">My shop only</option>
+              </select>
+            </label>
+          )}
+
           <button
             className="ghost"
             onClick={loadAll}
@@ -686,7 +710,7 @@ export default function Products() {
             type="button"
           >
             <RefreshCw size={14} />
-            <span>{loading ? 'Refreshing...' : 'Refresh'}</span>
+            <span>{loading ? 'Refreshing…' : 'Refresh'}</span>
           </button>
 
           <button className="primary" onClick={openCreate} type="button">
@@ -705,7 +729,7 @@ export default function Products() {
       <div className="erp-table-wrap">
         {loading && products.length === 0 ? (
           <div className="erp-empty">
-            <p className="muted">Loading products...</p>
+            <p className="muted">Loading products…</p>
           </div>
         ) : products.length === 0 ? (
           <div className="erp-empty">
@@ -730,7 +754,7 @@ export default function Products() {
               </tr>
             </thead>
             <tbody>
-              {products.map((p) => (
+              {paged.map((p) => (
                 <tr key={p.id}>
                   <td className="erp-cell-muted">#{p.id}</td>
                   <td>
@@ -810,6 +834,8 @@ export default function Products() {
           </table>
         )}
       </div>
+
+      <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
 
       {modalOpen && (
         <ProductModal

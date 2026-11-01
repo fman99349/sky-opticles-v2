@@ -48,6 +48,8 @@ const payfastRoutes = require('./routes/payfast');
 
 // Marketplace — seller onboarding, shop management
 app.use('/api', require('./routes/shopInvites'));
+// Seller marketplace applications (public + admin)
+app.use('/api', require('./routes/sellerApplications'));
 app.use('/api', require('./routes/shopsSeller'));
 app.use('/api', require('./routes/shopsAdmin'));
 app.use('/api', require('./routes/shopsPublic'));

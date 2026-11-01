@@ -1,17 +1,15 @@
-// backend/scripts/bulk-delete.js
+require('dotenv').config();
 const readline = require('node:readline/promises');
 const { stdin: input, stdout: output } = require('node:process');
-const { pool } = require('../src/db'); // adjust if your export name differs
+const pool = require('../src/db');
 
-// Child tables first — parents last.
-// This order satisfies the ON DELETE RESTRICT constraints
-// on products → categories and products → brands.
 const TABLES_IN_ORDER = [
   'product_images',
   'product_variants',
   'products',
   'categories',
   'brands',
+  'shops',
 ];
 
 async function main() {

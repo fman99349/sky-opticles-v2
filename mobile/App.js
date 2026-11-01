@@ -26,6 +26,7 @@ import {
   price,
 } from './utils/product';
 import { defaultConfigForProductType } from './data/lensOptions';
+import ShopApplicationScreen from './screens/ShopApplicationScreen';
 import ForgotPasswordScreen from './screens/ForgotPasswordScreen';
 import { CartProvider, useCart } from './cart/CartContext';
 import { AuthProvider, useAuth } from './auth/AuthContext';

@@ -178,4 +178,26 @@ export const authStyles = StyleSheet.create({
     lineHeight: 16,
     textAlign: 'center',
   },
+
+shopLinkBtn: {
+  marginTop: 20,
+  paddingVertical: 12,
+  alignItems: 'center',
+},
+shopLinkText: {
+  fontSize: 11,
+  color: '#7C8792',
+  fontWeight: '700',
+  letterSpacing: 0.3,
+},
+shopLinkAccent: {
+  color: '#D7B987',
+  fontWeight: '900',
+  textDecorationLine: 'underline',
+},
+
+
+
+
+
 });

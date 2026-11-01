@@ -18,7 +18,7 @@ import { useAuth } from '../auth/AuthContext';
 const C = { navy: '#101D2C' };
 const PASSWORD_MIN = 8;
 
-export default function SignUpScreen({ onBack, onGoToSignIn }) {
+export default function SignUpScreen({ onBack, onGoToSignIn, onOpenShopApplication }) {
   const { signUp } = useAuth();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -215,6 +215,12 @@ export default function SignUpScreen({ onBack, onGoToSignIn }) {
             By creating an account, you agree to be contacted about your orders
             only. No marketing without your consent.
           </Text>
+
+          <Pressable onPress={onOpenShopApplication} style={a.shopLinkBtn}>
+  <Text style={a.shopLinkText}>
+    Own a shop with <Text style={a.shopLinkAccent}>DD Marketplace</Text> →
+  </Text>
+</Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

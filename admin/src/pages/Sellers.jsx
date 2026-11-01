@@ -4,6 +4,7 @@ import {
   Store, Trash2,
 } from 'lucide-react';
 import { adminApi } from '../api/adminClient.js';
+import { CheckCircle2, Clock, Eye, Send } from 'lucide-react';
 
 const STATUS_BADGE = {
   draft: 'badge-draft',
@@ -571,6 +572,371 @@ function InvitesTab({ onShowInviteModal, refreshKey }) {
   );
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ---------------------------------------------------------------------------
+// Applications tab
+// ---------------------------------------------------------------------------
+function ApplicationsTab({ onInviteApplied }) {
+  const [apps, setApps] = useState([]);
+  const [counts, setCounts] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [filter, setFilter] = useState('pending');
+  const [detailApp, setDetailApp] = useState(null);
+
+  const load = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const url = `${import.meta.env.VITE_API_BASE_URL}/admin/seller-applications${
+        filter === 'all' ? '' : `?status=${filter}`
+      }`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` },
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Failed to load.');
+      setApps(json.data || []);
+      setCounts(json.counts || {});
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, [filter]);
+
+  const invite = async (app) => {
+    if (!window.confirm(`Send invite link to ${app.email}?`)) return;
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_API_BASE_URL}/admin/seller-applications/${app.id}/invite`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` },
+        }
+      );
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Invite failed.');
+      alert(`Invite sent! Link: ${json.data.invite_url}`);
+      load();
+      onInviteApplied?.();
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
+  const reject = async (app) => {
+    const reason = window.prompt(`Reject application from ${app.full_name} — reason?`);
+    if (!reason?.trim()) return;
+    try {
+      await fetch(
+        `${import.meta.env.VITE_API_BASE_URL}/admin/seller-applications/${app.id}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${localStorage.getItem('adminToken')}`,
+          },
+          body: JSON.stringify({ status: 'rejected', rejection_reason: reason.trim() }),
+        }
+      );
+      load();
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
+  const markContacted = async (app) => {
+    try {
+      await fetch(
+        `${import.meta.env.VITE_API_BASE_URL}/admin/seller-applications/${app.id}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${localStorage.getItem('adminToken')}`,
+          },
+          body: JSON.stringify({ status: 'contacted' }),
+        }
+      );
+      load();
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
+  const FILTERS = [
+    { key: 'all', label: `All (${(counts.pending||0)+(counts.contacted||0)+(counts.invited||0)+(counts.rejected||0)})` },
+    { key: 'pending', label: `Pending (${counts.pending || 0})` },
+    { key: 'contacted', label: `Contacted (${counts.contacted || 0})` },
+    { key: 'invited', label: `Invited (${counts.invited || 0})` },
+    { key: 'rejected', label: `Rejected (${counts.rejected || 0})` },
+  ];
+
+  const formatDT = (iso) => iso ? new Date(iso).toLocaleString('en-ZA') : '—';
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+        {FILTERS.map((f) => (
+          <button
+            key={f.key}
+            className={filter === f.key ? 'primary' : 'ghost'}
+            onClick={() => setFilter(f.key)}
+            style={{ padding: '0 14px', height: 32, fontSize: 11 }}
+          >
+            {f.label}
+          </button>
+        ))}
+        <button className="ghost" onClick={load} style={{ marginLeft: 'auto', height: 32 }}>
+          <RefreshCw size={12} /><span style={{ marginLeft: 6 }}>Refresh</span>
+        </button>
+      </div>
+
+      {error && <div className="erp-alert"><span>{error}</span></div>}
+
+      <div className="erp-table-wrap">
+        {loading ? (
+          <div className="erp-empty"><p className="muted">Loading…</p></div>
+        ) : apps.length === 0 ? (
+          <div className="erp-empty">
+            <Clock size={36} color="#7C8792" />
+            <p className="erp-empty-title">No {filter === 'all' ? '' : filter} applications</p>
+          </div>
+        ) : (
+          <table className="erp-table">
+            <thead>
+              <tr>
+                <th>Applicant</th>
+                <th>Contact</th>
+                <th>Location</th>
+                <th>Reference</th>
+                <th>Submitted</th>
+                <th style={{ textAlign: 'center' }}>Status</th>
+                <th style={{ textAlign: 'center' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {apps.map((app) => (
+                <tr key={app.id}>
+                  <td>
+                    <div className="erp-cell-strong">{app.full_name}</div>
+                    {app.business_name && <div className="erp-cell-sub">{app.business_name}</div>}
+                  </td>
+                  <td className="erp-cell-muted">
+                    <div>{app.email}</div>
+                    <div style={{ fontSize: 11 }}>{app.whatsapp}</div>
+                  </td>
+                  <td className="erp-cell-muted">{app.city}, {app.province}</td>
+                  <td><span style={{ fontFamily: 'monospace', fontSize: 11 }}>{app.reference_code}</span></td>
+                  <td className="erp-cell-muted">{formatDT(app.created_at)}</td>
+                  <td style={{ textAlign: 'center' }}>
+                    <span className={`badge ${
+                      app.status === 'pending' ? 'badge-draft' :
+                      app.status === 'contacted' ? 'badge-draft' :
+                      app.status === 'invited' ? 'badge-active' :
+                      'badge-archived'
+                    }`}>{app.status}</span>
+                  </td>
+                  <td>
+                    <div className="erp-row-actions">
+                      <button
+                        className="erp-row-action"
+                        onClick={() => setDetailApp(app)}
+                        title="View details"
+                      >
+                        <Eye size={13} />
+                      </button>
+                      {app.status === 'pending' && (
+                        <button
+                          className="erp-row-action"
+                          onClick={() => markContacted(app)}
+                          title="Mark as contacted"
+                        >
+                          <CheckCircle2 size={13} color="#2E8D86" />
+                        </button>
+                      )}
+                      {(app.status === 'pending' || app.status === 'contacted') && (
+                        <>
+                          <button
+                            className="erp-row-action"
+                            onClick={() => invite(app)}
+                            title="Send invite"
+                          >
+                            <Send size={13} color="#C9962E" />
+                          </button>
+                          <button
+                            className="erp-row-action danger"
+                            onClick={() => reject(app)}
+                            title="Reject"
+                          >
+                            <XCircle size={13} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {detailApp && (
+        <ApplicationDetailModal
+          app={detailApp}
+          onClose={() => setDetailApp(null)}
+          onUpdated={() => { setDetailApp(null); load(); }}
+          onInvite={() => { invite(detailApp); setDetailApp(null); }}
+          onReject={() => { reject(detailApp); setDetailApp(null); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function ApplicationDetailModal({ app, onClose, onUpdated, onInvite, onReject }) {
+  const [notes, setNotes] = useState(app.admin_notes || '');
+  const [saving, setSaving] = useState(false);
+
+  const saveNotes = async () => {
+    setSaving(true);
+    try {
+      await fetch(
+        `${import.meta.env.VITE_API_BASE_URL}/admin/seller-applications/${app.id}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${localStorage.getItem('adminToken')}`,
+          },
+          body: JSON.stringify({ admin_notes: notes }),
+        }
+      );
+      onUpdated?.();
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const shopTypeLabels = {
+    optical_frame: 'Optical frames', sunglasses: 'Sunglasses',
+    lenses: 'Lenses', contact_lenses: 'Contact lenses',
+    accessory: 'Accessories', other: 'Other',
+  };
+  const timeframeLabels = {
+    trial_14d: '14-day trial', '3m': '3 months', '6m': '6 months',
+    '1y': '1 year', ongoing: 'Ongoing',
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-panel" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 640 }}>
+        <header className="modal-head">
+          <div>
+            <h2>Application — {app.reference_code}</h2>
+            <p className="muted small">{new Date(app.created_at).toLocaleString('en-ZA')}</p>
+          </div>
+          <button className="icon-ghost" onClick={onClose} type="button" aria-label="Close">
+            <X size={18} />
+          </button>
+        </header>
+
+        <div className="form" style={{ fontSize: 13 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: '8px 16px' }}>
+            <span className="muted">Name:</span><strong>{app.full_name}</strong>
+            <span className="muted">Business:</span><span>{app.business_name || '—'}</span>
+            <span className="muted">Email:</span><span><a href={`mailto:${app.email}`}>{app.email}</a></span>
+            <span className="muted">Phone:</span><span>{app.phone}</span>
+            <span className="muted">WhatsApp:</span><span>{app.whatsapp}</span>
+            <span className="muted">Location:</span><span>{app.city}, {app.province}, {app.country}</span>
+            <span className="muted">Product types:</span><span>{(app.shop_types || []).map((t) => shopTypeLabels[t] || t).join(', ')}</span>
+            <span className="muted">Currencies:</span><span>{(app.currencies || []).join(', ')}</span>
+            <span className="muted">Time frame:</span><span>{timeframeLabels[app.time_frame] || app.time_frame}</span>
+          </div>
+
+          {app.description && (
+            <div style={{ marginTop: 16, padding: 12, background: '#F8F5EF', borderRadius: 6 }}>
+              <div className="muted small" style={{ marginBottom: 4, textTransform: 'uppercase' }}>Message</div>
+              {app.description}
+            </div>
+          )}
+
+          <label style={{ marginTop: 16 }}>
+            Admin notes (internal only)
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={3}
+              placeholder="Internal notes…"
+            />
+          </label>
+        </div>
+
+        <div className="modal-actions" style={{ justifyContent: 'space-between' }}>
+          <div>
+            {app.status !== 'invited' && app.status !== 'rejected' && (
+              <>
+                <button type="button" className="primary" onClick={onInvite} style={{ marginRight: 8 }}>
+                  <Send size={14} /><span style={{ marginLeft: 6 }}>Send invite</span>
+                </button>
+                <button type="button" className="ghost" onClick={onReject}>
+                  <XCircle size={14} /><span style={{ marginLeft: 6 }}>Reject</span>
+                </button>
+              </>
+            )}
+          </div>
+          <div>
+            <button type="button" className="ghost" onClick={saveNotes} disabled={saving} style={{ marginRight: 8 }}>
+              {saving ? 'Saving…' : 'Save notes'}
+            </button>
+            <button type="button" className="ghost" onClick={onClose}>Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -597,30 +963,37 @@ export default function Sellers() {
       </div>
 
       <div style={{ display: 'flex', gap: 6 }}>
-        <button
-          className={tab === 'shops' ? 'primary' : 'ghost'}
-          onClick={() => setTab('shops')}
-          style={{ padding: '0 18px', height: 36, fontSize: 11 }}
-        >
-          Shops
-        </button>
-        <button
-          className={tab === 'invites' ? 'primary' : 'ghost'}
-          onClick={() => setTab('invites')}
-          style={{ padding: '0 18px', height: 36, fontSize: 11 }}
-        >
-          Invites
-        </button>
-      </div>
+  <button
+    className={tab === 'shops' ? 'primary' : 'ghost'}
+    onClick={() => setTab('shops')}
+    style={{ padding: '0 18px', height: 36, fontSize: 11 }}
+  >
+    Shops
+  </button>
+  <button
+    className={tab === 'applications' ? 'primary' : 'ghost'}
+    onClick={() => setTab('applications')}
+    style={{ padding: '0 18px', height: 36, fontSize: 11 }}
+  >
+    Applications
+  </button>
+  <button
+    className={tab === 'invites' ? 'primary' : 'ghost'}
+    onClick={() => setTab('invites')}
+    style={{ padding: '0 18px', height: 36, fontSize: 11 }}
+  >
+    Invites
+  </button>
+</div>
 
-      {tab === 'shops' ? (
-        <ShopsTab />
-      ) : (
-        <InvitesTab
-          onShowInviteModal={() => setInviteModalOpen(true)}
-          refreshKey={inviteRefresh}
-        />
-      )}
+      {tab === 'shops' && <ShopsTab />}
+{tab === 'applications' && <ApplicationsTab onInviteApplied={() => setInviteRefresh((n) => n + 1)} />}
+{tab === 'invites' && (
+  <InvitesTab
+    onShowInviteModal={() => setInviteModalOpen(true)}
+    refreshKey={inviteRefresh}
+  />
+)}
 
       {inviteModalOpen && (
         <InviteModal

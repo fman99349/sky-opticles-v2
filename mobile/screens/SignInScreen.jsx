@@ -21,7 +21,7 @@ const C = { navy: '#101D2C', muted: '#7C8792' };
 // Key used to store the last successful login
 const LAST_LOGIN_KEY = 'sky_last_login';
 
-export default function SignInScreen({ onBack, onGoToSignUp, onForgotPassword }) {
+export default function SignInScreen({ onBack, onGoToSignUp, onForgotPassword, onOpenShopApplication }) {
   const { signIn } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -194,6 +194,17 @@ export default function SignInScreen({ onBack, onGoToSignUp, onForgotPassword })
             Your account is used to identify you at checkout. You can browse
             and build a cart without signing in.
           </Text>
+
+
+
+
+
+
+          <Pressable onPress={onOpenShopApplication} style={a.shopLinkBtn}>
+  <Text style={a.shopLinkText}>
+    Own a shop with <Text style={a.shopLinkAccent}>DD Marketplace</Text> →
+  </Text>
+</Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

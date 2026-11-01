@@ -91,9 +91,10 @@ export const shopStyles = StyleSheet.create({
   shopCardLogoBox: {
     height: 130,
     backgroundColor: '#EDEAE4',
-    alignItems: 'center',
-    justifyContent: 'center',
+  
   },
+
+
   shopCardLogo: { width: '70%', height: '70%' },
   shopCardMonogram: { color: C.navy, fontSize: 34, fontWeight: '900', letterSpacing: 1 },
   shopCardInfo: { padding: 10 },

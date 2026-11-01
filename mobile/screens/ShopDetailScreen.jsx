@@ -95,7 +95,8 @@ export default function ShopDetailScreen({ slug, onBack, onOpenProduct, onAddToC
                   <Image
                     source={{ uri: shop.logo_url }}
                     style={s.logoBannerImage}
-                    resizeMode="contain"
+                    resizeMode="cover"
+                   
                   />
                 </View>
               ) : (

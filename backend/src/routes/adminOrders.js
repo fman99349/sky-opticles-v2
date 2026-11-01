@@ -3,6 +3,8 @@ const fs = require('fs');
 const path = require('path');
 const pool = require('../db');
 const { requireAdmin } = require('./adminAuth');
+// >>> NEW: shop scoping middleware + helper
+const { requireShopAccess, accessibleShopIds } = require('../middleware/shopAccess');
 const { sendExpoPush } = require('../utils/expoPush');
 
 const router = express.Router();
@@ -16,8 +18,30 @@ function isPositiveInt(v) {
   return Number.isInteger(v) && v > 0;
 }
 
+// >>> NEW: per-order access check used by detail / patch / prescription routes.
+// Owner: always true. Seller: true only if at least one item in the order
+// references a product whose shop_id is one of the seller's shops.
+async function canAccessOrder(req, orderId) {
+  const shopIds = accessibleShopIds(req);
+  if (shopIds === null) return true;       // platform owner
+  if (!shopIds.length) return false;       // seller with no shop
+
+  const r = await pool.query(
+    `SELECT 1
+       FROM order_items oi
+       JOIN products p ON p.id = oi.product_id
+      WHERE oi.order_id = $1
+        AND p.shop_id = ANY($2::bigint[])
+      LIMIT 1`,
+    [orderId, shopIds]
+  );
+  return r.rows.length > 0;
+}
+
 // GET /api/admin/orders
-router.get('/admin/orders', requireAdmin, async (req, res) => {
+// Owner: all orders. Seller: only orders containing at least one item
+// from their shop.
+router.get('/admin/orders', requireAdmin, requireShopAccess, async (req, res) => {
   const page = Number(req.query.page || 1);
   const limit = Number(req.query.limit || 25);
 
@@ -27,6 +51,39 @@ router.get('/admin/orders', requireAdmin, async (req, res) => {
 
   const conditions = ['o.deleted_at IS NULL'];
   const values = [];
+
+  // >>> apply shop scope
+  let shopIds = accessibleShopIds(req);
+
+  // Platform owner: optional "mine only" toggle — restrict to shops the
+  // owner is a member of (usually just the platform shop, SKY OPTICLES).
+  const wantMine = req.query.mine === 'true' || req.query.mine === true;
+  if (wantMine && req.admin.is_platform_owner) {
+    const membershipRes = await pool.query(
+      'SELECT shop_id FROM shop_memberships WHERE admin_id = $1',
+      [req.admin.id]
+    );
+    shopIds = membershipRes.rows.map((r) => Number(r.shop_id));
+  }
+
+  if (shopIds !== null) {
+    if (!shopIds.length) {
+      return res.json({
+        data: [],
+        pagination: { page, limit, total: 0, totalPages: 0 },
+      });
+    }
+    values.push(shopIds);
+    conditions.push(
+      `EXISTS (
+         SELECT 1
+           FROM order_items oi_scope
+           JOIN products p_scope ON p_scope.id = oi_scope.product_id
+          WHERE oi_scope.order_id = o.id
+            AND p_scope.shop_id = ANY($${values.length}::bigint[])
+       )`
+    );
+  }
 
   if (req.query.payment_status !== undefined) {
     if (!ALLOWED_PAYMENT.includes(req.query.payment_status)) return res.status(400).json({ error: 'Invalid payment_status.' });
@@ -103,31 +160,75 @@ router.get('/admin/orders', requireAdmin, async (req, res) => {
 });
 
 // GET /api/admin/orders/:id
-router.get('/admin/orders/:id', requireAdmin, async (req, res) => {
+// Owner: full order. Seller: only their shop's items; subtotal/total
+// recomputed from those items; is_partial_view flags it for the client.
+router.get('/admin/orders/:id', requireAdmin, requireShopAccess, async (req, res) => {
   const id = Number(req.params.id);
   if (!isPositiveInt(id)) return res.status(400).json({ error: 'Invalid order ID.' });
 
   try {
+    const allowed = await canAccessOrder(req, id);
+    if (!allowed) return res.status(404).json({ error: 'Order not found.' });
+
     const orderResult = await pool.query('SELECT * FROM orders WHERE id = $1', [id]);
     if (orderResult.rows.length === 0) return res.status(404).json({ error: 'Order not found.' });
 
     const order = orderResult.rows[0];
+    const shopIds = accessibleShopIds(req);
 
-    const itemsResult = await pool.query(
-      `SELECT
-         oi.id, oi.product_id, oi.variant_id, oi.prescription_id,
-         oi.product_name, oi.product_slug, oi.variant_sku, oi.lens_config,
-         oi.base_price, oi.lens_delta, oi.unit_price, oi.quantity, oi.line_total,
-         oi.variant_attributes,
-         pr.original_name AS prescription_original_name,
-         pr.mime_type     AS prescription_mime_type,
-         pr.size_bytes    AS prescription_size_bytes
-       FROM order_items oi
-       LEFT JOIN prescriptions pr ON pr.id = oi.prescription_id
-       WHERE oi.order_id = $1
-       ORDER BY oi.id`,
-      [id]
-    );
+    const itemsSql = shopIds === null
+      ? `SELECT
+           oi.id, oi.product_id, oi.variant_id, oi.prescription_id,
+           oi.product_name, oi.product_slug, oi.variant_sku, oi.lens_config,
+           oi.base_price, oi.lens_delta, oi.unit_price, oi.quantity, oi.line_total,
+           oi.variant_attributes,
+           pr.original_name AS prescription_original_name,
+           pr.mime_type     AS prescription_mime_type,
+           pr.size_bytes    AS prescription_size_bytes
+         FROM order_items oi
+         LEFT JOIN prescriptions pr ON pr.id = oi.prescription_id
+         WHERE oi.order_id = $1
+         ORDER BY oi.id`
+      : `SELECT
+           oi.id, oi.product_id, oi.variant_id, oi.prescription_id,
+           oi.product_name, oi.product_slug, oi.variant_sku, oi.lens_config,
+           oi.base_price, oi.lens_delta, oi.unit_price, oi.quantity, oi.line_total,
+           oi.variant_attributes,
+           pr.original_name AS prescription_original_name,
+           pr.mime_type     AS prescription_mime_type,
+           pr.size_bytes    AS prescription_size_bytes
+         FROM order_items oi
+         LEFT JOIN prescriptions pr ON pr.id = oi.prescription_id
+         JOIN products p ON p.id = oi.product_id
+         WHERE oi.order_id = $1 AND p.shop_id = ANY($2::bigint[])
+         ORDER BY oi.id`;
+
+    const itemsResult = shopIds === null
+      ? await pool.query(itemsSql, [id])
+      : await pool.query(itemsSql, [id, shopIds]);
+
+    let isPartialView = false;
+    let visibleSubtotal = Number(order.subtotal);
+    let visibleTotal    = Number(order.total);
+    let visibleBaseTotal = order.base_total;
+    let visibleShipping = order.shipping_cost;
+
+    if (shopIds !== null) {
+      const totalItemsRes = await pool.query(
+        'SELECT COUNT(*)::int AS n FROM order_items WHERE order_id = $1',
+        [id]
+      );
+      if (itemsResult.rows.length < totalItemsRes.rows[0].n) {
+        isPartialView = true;
+        visibleSubtotal = itemsResult.rows.reduce(
+          (sum, it) => sum + Number(it.line_total),
+          0
+        );
+        visibleTotal = visibleSubtotal;
+        visibleBaseTotal = null;
+        visibleShipping = 0;
+      }
+    }
 
     res.json({
       data: {
@@ -140,11 +241,12 @@ router.get('/admin/orders/:id', requireAdmin, async (req, res) => {
           city: order.shipping_city, postalCode: order.shipping_postal_code,
           province: order.shipping_province, country: order.shipping_country,
         },
-        subtotal: order.subtotal,
-        shipping_cost: order.shipping_cost,
-        total: order.total,
-        currency: order.currency,           // <--- ADDED
-        base_total: order.base_total,       // <--- ADDED
+        subtotal: visibleSubtotal,
+        shipping_cost: visibleShipping,
+        total: visibleTotal,
+        currency: order.currency,
+        base_total: visibleBaseTotal,
+        is_partial_view: isPartialView,
         payment_status: order.payment_status,
         fulfillment_status: order.fulfillment_status,
         archived: order.archived,
@@ -163,9 +265,14 @@ router.get('/admin/orders/:id', requireAdmin, async (req, res) => {
 });
 
 // PATCH /api/admin/orders/:id
-router.patch('/admin/orders/:id', requireAdmin, async (req, res) => {
+// Sellers can update fulfillment/archive/delivery for their own orders.
+router.patch('/admin/orders/:id', requireAdmin, requireShopAccess, async (req, res) => {
   const id = Number(req.params.id);
   if (!isPositiveInt(id)) return res.status(400).json({ error: 'Invalid order ID.' });
+
+  // >>> NEW: access check first (404 to avoid leaking existence)
+  const allowed = await canAccessOrder(req, id);
+  if (!allowed) return res.status(404).json({ error: 'Order not found.' });
 
   const { fulfillment_status, archived, estimated_delivery_date } = req.body || {};
   const updates = {};
@@ -183,9 +290,7 @@ router.patch('/admin/orders/:id', requireAdmin, async (req, res) => {
     updates.archived = `$${values.length}`;
   }
 
-
-
-    if (estimated_delivery_date !== undefined) {
+  if (estimated_delivery_date !== undefined) {
     values.push(estimated_delivery_date);
     updates.estimated_delivery_date = `$${values.length}`;
   }
@@ -202,27 +307,25 @@ router.patch('/admin/orders/:id', requireAdmin, async (req, res) => {
       values
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Order not found.' });
-    
+
     const updatedOrder = result.rows[0];
 
-    // Send Push Notification if fulfillment status changed
     if (fulfillment_status !== undefined) {
       try {
         const userRes = await pool.query(
-          `SELECT u.expo_push_token 
-             FROM orders o 
-             JOIN users u ON u.id = o.user_id 
-            WHERE o.id = $1`, 
+          `SELECT u.expo_push_token
+             FROM orders o
+             JOIN users u ON u.id = o.user_id
+            WHERE o.id = $1`,
           [id]
         );
-        
+
         const pushToken = userRes.rows[0]?.expo_push_token;
         if (pushToken) {
-          // Make it look nice: 'processing' -> 'Processing'
           const prettyStatus = fulfillment_status.charAt(0).toUpperCase() + fulfillment_status.slice(1);
           sendExpoPush(
-            pushToken, 
-            'Order Status Updated', 
+            pushToken,
+            'Order Status Updated',
             `Your order ${updatedOrder.order_number} is now ${prettyStatus}.`,
             { orderId: id }
           );
@@ -240,7 +343,12 @@ router.patch('/admin/orders/:id', requireAdmin, async (req, res) => {
 });
 
 // POST /api/admin/orders/:id/mark-paid
+// >>> NEW: platform owner only (matches hidden UI button)
 router.post('/admin/orders/:id/mark-paid', requireAdmin, async (req, res) => {
+  if (!req.admin.is_platform_owner) {
+    return res.status(403).json({ error: 'Only the platform owner can mark orders paid.' });
+  }
+
   const id = Number(req.params.id);
   if (!isPositiveInt(id)) return res.status(400).json({ error: 'Invalid order ID.' });
 
@@ -258,8 +366,13 @@ router.post('/admin/orders/:id/mark-paid', requireAdmin, async (req, res) => {
   }
 });
 
-// DELETE /api/admin/orders/:id
+// DELETE /api/admin/orders/:id (soft delete)
+// >>> NEW: platform owner only (matches hidden UI button)
 router.delete('/admin/orders/:id', requireAdmin, async (req, res) => {
+  if (!req.admin.is_platform_owner) {
+    return res.status(403).json({ error: 'Only the platform owner can delete orders.' });
+  }
+
   const id = Number(req.params.id);
   if (!isPositiveInt(id)) return res.status(400).json({ error: 'Invalid order ID.' });
 
@@ -277,13 +390,31 @@ router.delete('/admin/orders/:id', requireAdmin, async (req, res) => {
 });
 
 // GET /api/admin/prescriptions/:id
-router.get('/admin/prescriptions/:id', requireAdmin, async (req, res) => {
+// >>> NEW: seller can only fetch prescriptions attached to an order that
+// contains at least one item from their shop.
+router.get('/admin/prescriptions/:id', requireAdmin, requireShopAccess, async (req, res) => {
   const id = Number(req.params.id);
   if (!isPositiveInt(id)) return res.status(400).json({ error: 'Invalid prescription ID.' });
 
   try {
     const result = await pool.query('SELECT filename, original_name, mime_type FROM prescriptions WHERE id = $1', [id]);
     if (result.rows.length === 0) return res.status(404).json({ error: 'Prescription not found.' });
+
+    const shopIds = accessibleShopIds(req);
+    if (shopIds !== null) {
+      const accessCheck = await pool.query(
+        `SELECT 1
+           FROM order_items oi
+           JOIN products p ON p.id = oi.product_id
+          WHERE oi.prescription_id = $1
+            AND p.shop_id = ANY($2::bigint[])
+          LIMIT 1`,
+        [id, shopIds]
+      );
+      if (accessCheck.rows.length === 0) {
+        return res.status(404).json({ error: 'Prescription not found.' });
+      }
+    }
 
     const row = result.rows[0];
     const filePath = path.join(PRESCRIPTION_UPLOAD_DIR, row.filename);

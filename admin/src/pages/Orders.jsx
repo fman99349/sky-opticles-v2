@@ -9,6 +9,7 @@ import {
   BadgeCheck,
 } from 'lucide-react';
 import { api } from '../api/client.js';
+import { useAdminAuth } from '../auth/AdminAuthContext.jsx';
 
 const PAYMENT_OPTIONS = ['unpaid', 'paid', 'refunded'];
 const FULFILLMENT_OPTIONS = [
@@ -50,12 +51,12 @@ function formatDate(iso) {
   }
 }
 
-
 function formatDateForInput(isoString) {
   if (!isoString) return '';
   const d = new Date(isoString);
   return d.toISOString().split('T')[0]; // Returns YYYY-MM-DD
 }
+
 // ---------------------------------------------------------------------------
 // Lens specification helpers
 // ---------------------------------------------------------------------------
@@ -146,7 +147,6 @@ function SpecsPanel({ item, lensGroups }) {
     });
   }
 
-  // If the item has variant_attributes (like a laptop), list them here.
   const variantAttrs = item.variant_attributes || {};
   for (const [k, v] of Object.entries(variantAttrs)) {
     rows.push({ label: k, value: String(v) });
@@ -221,12 +221,15 @@ function Pill({ kind, value }) {
 // Order detail modal
 // ---------------------------------------------------------------------------
 function OrderModal({ orderId, onClose, onChanged, lensGroups }) {
+  const { admin } = useAdminAuth();
+  const isOwner = admin?.is_platform_owner;
+
   const [order, setOrder] = useState(null);
   const [openSpecs, setOpenSpecs] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
-    const [deliveryDate, setDeliveryDate] = useState('');
+  const [deliveryDate, setDeliveryDate] = useState('');
 
   const openPrescription = async (prescriptionId) => {
     try {
@@ -288,10 +291,10 @@ function OrderModal({ orderId, onClose, onChanged, lensGroups }) {
       setBusy('');
     }
   };
+
   const saveDeliveryDate = async () => {
     setBusy('delivery');
     try {
-      // Set time to end of day so the customer sees the full day
       const isoDate = new Date(`${deliveryDate}T23:59:59`).toISOString();
       await api.updateOrder(orderId, { estimated_delivery_date: isoDate });
       await load();
@@ -303,12 +306,6 @@ function OrderModal({ orderId, onClose, onChanged, lensGroups }) {
       setBusy('');
     }
   };
-
-
-
-
-
-
 
   const markPaid = async () => {
     const ok = window.confirm(
@@ -387,6 +384,26 @@ function OrderModal({ orderId, onClose, onChanged, lensGroups }) {
               )}
             </div>
 
+            {order.is_partial_view && (
+              <div
+                style={{
+                  background: 'rgba(201,150,46,0.08)',
+                  border: '1px solid rgba(201,150,46,0.35)',
+                  color: '#8A6B1E',
+                  padding: '10px 14px',
+                  borderRadius: 6,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  marginBottom: 12,
+                  lineHeight: 1.45,
+                }}
+              >
+                ⚠ This order contains items from another shop. You are only
+                seeing your shop's items, and the subtotal/total reflect those
+                items only.
+              </div>
+            )}
+
             {/* Customer */}
             <div className="order-detail-section">
               <h4>Customer</h4>
@@ -438,7 +455,7 @@ function OrderModal({ orderId, onClose, onChanged, lensGroups }) {
               </div>
             </div>
 
-                       {/* Delivery Date */}
+            {/* Delivery Date */}
             <div className="order-detail-section">
               <h4>Estimated Delivery</h4>
               <div style={{ 
@@ -474,13 +491,6 @@ function OrderModal({ orderId, onClose, onChanged, lensGroups }) {
                 </button>
               </div>
             </div>
-
-
-
-
-
-
-
 
             {/* Items */}
             <div className="order-detail-section">
@@ -640,7 +650,7 @@ function OrderModal({ orderId, onClose, onChanged, lensGroups }) {
                 Other actions
               </span>
 
-              {order.payment_status === 'unpaid' && (
+              {isOwner && order.payment_status === 'unpaid' && (
                 <button
                   type="button"
                   className="test-mode"
@@ -668,18 +678,20 @@ function OrderModal({ orderId, onClose, onChanged, lensGroups }) {
                 {order.archived ? 'Unarchive' : 'Archive'}
               </button>
 
-              <button
-                type="button"
-                className="danger"
-                onClick={deleteOrder}
-                disabled={busy !== ''}
-              >
-                <Trash2
-                  size={12}
-                  style={{ marginRight: 4, verticalAlign: '-2px' }}
-                />
-                {busy === 'delete' ? '…' : 'Delete'}
-              </button>
+              {isOwner && (
+                <button
+                  type="button"
+                  className="danger"
+                  onClick={deleteOrder}
+                  disabled={busy !== ''}
+                >
+                  <Trash2
+                    size={12}
+                    style={{ marginRight: 4, verticalAlign: '-2px' }}
+                  />
+                  {busy === 'delete' ? '…' : 'Delete'}
+                </button>
+              )}
             </div>
           </>
         )}
@@ -692,6 +704,9 @@ function OrderModal({ orderId, onClose, onChanged, lensGroups }) {
 // Orders page
 // ---------------------------------------------------------------------------
 export default function Orders() {
+  const { admin } = useAdminAuth();
+  const isOwner = admin?.is_platform_owner;
+
   const [orders, setOrders] = useState([]);
   const [pagination, setPagination] = useState({
     page: 1,
@@ -724,6 +739,7 @@ export default function Orders() {
     fulfillment_status: '',
     archived: '',
     search: '',
+    mine: false,
   });
 
   const [openOrderId, setOpenOrderId] = useState(null);
@@ -738,6 +754,7 @@ export default function Orders() {
         params.fulfillment_status = filters.fulfillment_status;
       if (filters.archived) params.archived = filters.archived;
       if (filters.search.trim()) params.search = filters.search.trim();
+      if (filters.mine) params.mine = 'true';
 
       const result = await api.listOrders(params);
       setOrders(result.data || []);
@@ -758,6 +775,7 @@ export default function Orders() {
     filters.fulfillment_status,
     filters.archived,
     filters.search,
+    filters.mine,
   ]);
 
   const showToast = (msg) => {
@@ -865,6 +883,19 @@ export default function Orders() {
           </select>
         </label>
 
+        {isOwner && (
+          <label>
+            Scope
+            <select
+              value={filters.mine ? 'mine' : 'all'}
+              onChange={(e) => setFilter('mine', e.target.value === 'mine')}
+            >
+              <option value="all">All shops</option>
+              <option value="mine">My shop only</option>
+            </select>
+          </label>
+        )}
+
         <label style={{ flex: 1 }}>
           Search
           <input
@@ -942,15 +973,19 @@ export default function Orders() {
                       >
                         <Eye size={13} />
                       </button>
-                      <button
-                        type="button"
-                        className="erp-row-action danger"
-                        onClick={() => handleDeleteOrder(o)}
-                        title="Delete order"
-                        aria-label={`Delete ${o.order_number}`}
-                      >
-                        <Trash2 size={13} />
-                      </button>
+                      
+                      {/* HIDE DELETE FOR SELLERS */}
+                      {isOwner && (
+                        <button
+                          type="button"
+                          className="erp-row-action danger"
+                          onClick={() => handleDeleteOrder(o)}
+                          title="Delete order"
+                          aria-label={`Delete ${o.order_number}`}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -1000,7 +1035,7 @@ export default function Orders() {
         </div>
       )}
 
-      {/* Detail modal — WITH lensGroups prop */}
+      {/* Detail modal */}
       {openOrderId && (
         <OrderModal
           orderId={openOrderId}

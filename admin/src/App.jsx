@@ -33,6 +33,7 @@ import {
 import Settings from './pages/Settings.jsx';
 import SellerDashboard from './pages/SellerDashboard.jsx';
 import Sellers from './pages/Sellers.jsx';
+
 // Navigation items for the admin sidebar.
 // Only Dashboard and Products are wired to real pages today. The rest
 // are explicit placeholders — no invented functionality.
@@ -59,13 +60,19 @@ function Shell({ admin, onSignOut }) {
   const [active, setActive] = useState('dashboard');
   const isOwner = admin?.is_platform_owner === true;
 
+
+
+
+
+  
+
   // Nav filtered by role
   const visibleNav = NAV.filter((n) => n.role === 'all' || (n.role === 'owner' && isOwner));
 
   // Page router — the dashboard branches by role, everything else is shared.
   const renderCurrent = () => {
     switch (active) {
-      case 'dashboard':    return isOwner ? <Dashboard /> : <SellerDashboard admin={admin} />;
+      case 'dashboard':    return isOwner ? <Dashboard /> : <SellerDashboard admin={admin} onNavigate={setActive} />;
       case 'products':     return <Products />;
       case 'orders':       return <Orders />;
       case 'sellers':      return <Sellers />;

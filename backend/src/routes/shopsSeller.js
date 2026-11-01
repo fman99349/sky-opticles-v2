@@ -485,15 +485,36 @@ async function uploadShopAsset(req, res, kind) {
 router.post('/admin/me/shop/logo', requireAdmin, (req, res) => uploadShopAsset(req, res, 'logo'));
 router.post('/admin/me/shop/banner', requireAdmin, (req, res) => uploadShopAsset(req, res, 'banner'));
 
+// ---------------------------------------------------------------------------
+// 🆕 DELETE /api/admin/me/shop/logo — remove logo
+// ---------------------------------------------------------------------------
+router.delete('/admin/me/shop/logo', requireAdmin, async (req, res) => {
+  const shop = await getMyShop(req.admin.id);
+  if (!shop) return res.status(404).json({ error: 'You do not have a shop yet.' });
+  if (['suspended', 'closed'].includes(shop.status)) {
+    return res.status(409).json({ error: `Cannot edit a shop with status "${shop.status}".` });
+  }
 
+  const previous = shop.logo_url;
 
+  try {
+    const r = await pool.query(
+      `UPDATE shops SET logo_url = NULL, updated_at = NOW() WHERE id = $1 RETURNING *`,
+      [shop.id]
+    );
 
+    // Delete the physical file
+    if (previous && typeof previous === 'string' && previous.startsWith(`/uploads/shops/${shop.id}/`)) {
+      try { fs.unlinkSync(path.join(SHOPS_DIR, String(shop.id), path.basename(previous))); } catch {}
+    }
 
-
-
-
-
-
+    const { shop: fullShop, billing } = await formatShopResponse(r.rows[0]);
+    res.json({ data: { shop: fullShop, billing } });
+  } catch (error) {
+    console.error('Delete logo failed:', error.message);
+    res.status(500).json({ error: 'An unexpected server error occurred.' });
+  }
+});
 
 // ---------------------------------------------------------------------------
 // GET /api/admin/me/products — scoped admin product list
@@ -509,14 +530,31 @@ router.get('/admin/me/products', requireAdmin, async (req, res) => {
   }
 
   const page = Math.max(1, Number(req.query.page || 1));
-  const limit = Math.min(100, Math.max(1, Number(req.query.limit || 50)));
+  const limit = Math.min(1000, Math.max(1, Number(req.query.limit || 50)));
   const offset = (page - 1) * limit;
 
   const conditions = [];
   const values = [];
 
   if (isOwner) {
-    if (req.query.shop_id) {
+    // Platform owner: optional "mine=true" filters to shops the owner
+    // is a member of (usually just the platform shop).
+    const wantMine = req.query.mine === 'true' || req.query.mine === true;
+    if (wantMine) {
+      const mineRes = await pool.query(
+        'SELECT shop_id FROM shop_memberships WHERE admin_id = $1',
+        [req.admin.id]
+      );
+      const mineIds = mineRes.rows.map((r) => Number(r.shop_id));
+      if (mineIds.length === 0) {
+        return res.json({
+          data: [],
+          pagination: { page, limit, total: 0, totalPages: 0 },
+        });
+      }
+      values.push(mineIds);
+      conditions.push(`p.shop_id = ANY($${values.length}::bigint[])`);
+    } else if (req.query.shop_id) {
       const sid = Number(req.query.shop_id);
       if (!Number.isInteger(sid) || sid < 1) {
         return res.status(400).json({ error: 'Invalid shop_id.' });
@@ -591,21 +629,5 @@ router.get('/admin/me/products', requireAdmin, async (req, res) => {
     res.status(500).json({ error: 'An unexpected server error occurred.' });
   }
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 module.exports = router;

@@ -26,7 +26,11 @@ function ShopCard({ shop, onPress }) {
     >
       <View style={s.shopCardLogoBox}>
         {shop.logo_url ? (
-          <Image source={{ uri: shop.logo_url }} style={s.shopCardLogo} resizeMode="contain" />
+          <Image 
+            source={{ uri: shop.logo_url }} 
+            style={{ width: '100%', height: '100%' }} 
+            resizeMode="cover" 
+          />
         ) : (
           <Text style={s.shopCardMonogram}>{monogram(shop.name)}</Text>
         )}
@@ -34,7 +38,7 @@ function ShopCard({ shop, onPress }) {
       <View style={s.shopCardInfo}>
         <View style={s.shopCardNameRow}>
           <Text style={s.shopCardName} numberOfLines={2}>{shop.name}</Text>
-          {shop.is_verified ? <Text style={s.verifiedBadge}>✓</Text> : null}
+          {shop.is_verified ? <Text style={s.verifiedBadge}></Text> : null}
         </View>
         {shop.tagline ? (
           <Text style={s.shopCardTagline} numberOfLines={2}>{shop.tagline}</Text>
